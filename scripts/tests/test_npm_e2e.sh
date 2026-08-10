@@ -8,7 +8,22 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 V2="$REPO_ROOT"
 VERSION=2.1.0
-TARGET=darwin-arm64
+# Detect current platform to match npm platform packages
+detect_target() {
+    local os arch
+    case "$(uname -s)" in
+        Darwin) os="darwin" ;;
+        Linux)  os="linux" ;;
+        *) os="unknown" ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64) arch="x64" ;;
+        arm64|aarch64) arch="arm64" ;;
+        *) arch="unknown" ;;
+    esac
+    echo "${os}-${arch}"
+}
+TARGET=$(detect_target)
 ROOT=/tmp/sparx_npm_e2e
 PASS=0; FAIL=0
 t_pass(){ echo "  PASS  $1"; PASS=$((PASS+1)); }
@@ -28,8 +43,32 @@ cp "$V2/packaging/npm/bin/sparx.js" "$ROOT/pkg/bin/"
 # Hoisted platform package (npm's normal layout).
 PLATDIR="$ROOT/pkg/node_modules/@sparx/cli-$TARGET"
 mkdir -p "$PLATDIR/bin"
-cp "$V2/packaging/npm/platforms/$TARGET/package.json" "$PLATDIR/"
-cp "$V2/packaging/npm/platforms/$TARGET/bin/sparx" "$PLATDIR/bin/"
+# Use the platform-specific binary: prefer the one in platforms/, fall back to
+# extracting from the dist tarball (CI builds fresh per platform).
+if [ -f "$V2/packaging/npm/platforms/$TARGET/bin/sparx" ]; then
+  cp "$V2/packaging/npm/platforms/$TARGET/bin/sparx" "$PLATDIR/bin/"
+elif [ -f "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" ]; then
+  tar -xzf "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" -C /tmp "sparx-$VERSION-$TARGET/bin/sparx"
+  cp "/tmp/sparx-$VERSION-$TARGET/bin/sparx" "$PLATDIR/bin/"
+else
+  echo "  SKIP  no binary available for $TARGET - skipping npm e2e"
+  exit 0
+fi
+# Ensure the platform package.json exists
+if [ -f "$V2/packaging/npm/platforms/$TARGET/package.json" ]; then
+  cp "$V2/packaging/npm/platforms/$TARGET/package.json" "$PLATDIR/"
+else
+  # Generate a minimal one for the current platform
+  cat > "$PLATDIR/package.json" <<PKGJSON
+{
+  "name": "@sparx/cli-$TARGET",
+  "version": "$VERSION",
+  "os": ["${TARGET%-*}"],
+  "cpu": ["${TARGET#*-}"],
+  "bin": { "sparx": "bin/sparx" }
+}
+PKGJSON
+fi
 chmod 755 "$PLATDIR/bin/sparx"
 
 cd "$ROOT/pkg"

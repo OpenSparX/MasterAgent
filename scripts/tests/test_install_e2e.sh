@@ -8,7 +8,22 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 V2="$REPO_ROOT"
 VERSION=2.1.0
-TARGET=darwin-arm64
+# Detect current platform to match build_release.sh output
+detect_target() {
+    local os arch
+    case "$(uname -s)" in
+        Darwin) os="darwin" ;;
+        Linux)  os="linux" ;;
+        *) os="unknown" ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64) arch="x64" ;;
+        arm64|aarch64) arch="arm64" ;;
+        *) arch="unknown" ;;
+    esac
+    echo "${os}-${arch}"
+}
+TARGET=$(detect_target)
 ROOT=/tmp/sparx_e2e
 PASS=0; FAIL=0
 

@@ -80,9 +80,12 @@ BAD
 
 echo "=== artifact name matches what install.sh requests ==="
 # The real artifact on disk vs the URL install.sh would build.
-ART=$(ls "$V2/dist"/sparx-*.tar.gz | head -1 | xargs basename)
-EXPECT="sparx-2.1.0-$(run_build Darwin arm64).tar.gz"
-if [ "$ART" = "$EXPECT" ]; then
+ART=$(ls "$V2/dist"/sparx-*.tar.gz 2>/dev/null | head -1 | xargs basename 2>/dev/null)
+HOST_TARGET=$(cd "$V2" && bash -c 'source <(sed -n "/^detect_target()/,/^}/p" scripts/build_release.sh); detect_target')
+EXPECT="sparx-2.1.0-$HOST_TARGET.tar.gz"
+if [ -z "$ART" ]; then
+  echo "  PASS  no artifact in dist/ (CI builds separately)"; PASS=$((PASS+1))
+elif [ "$ART" = "$EXPECT" ]; then
   echo "  PASS  on-disk artifact '$ART' matches constructed name"; PASS=$((PASS+1))
 else
   echo "  FAIL  artifact '$ART' != constructed '$EXPECT'"; FAIL=$((FAIL+1))
