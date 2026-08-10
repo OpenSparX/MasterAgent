@@ -1,14 +1,20 @@
 {
   "name": "@sparx/cli-linux-x64",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "sparx binary for linux-x64",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/openschbrid/sparx.git"
   },
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "files": ["bin/sparx"],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/sparx"
+  ],
   "preferUnplugged": true
 }

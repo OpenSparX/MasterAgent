@@ -49,6 +49,8 @@ jobs:
         run: cmake --build build --parallel
       - name: C++ tests
         run: ctest --test-dir build --output-on-failure
+      - name: Sync npm package versions to tag
+        run: ./scripts/sync_npm_version.sh
       - name: Build release artifact
         run: ./scripts/build_release.sh
       - name: Packaging tests
