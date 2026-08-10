@@ -48,13 +48,13 @@ cp "$V2/packaging/npm/bin/sparx.js" "$ROOT/pkg/bin/"
 # Hoisted platform package (npm's normal layout).
 PLATDIR="$ROOT/pkg/node_modules/@sparx/cli-$TARGET"
 mkdir -p "$PLATDIR/bin"
-# Use the platform-specific binary: prefer the one in platforms/, fall back to
-# extracting from the dist tarball (CI builds fresh per platform).
-if [ -f "$V2/packaging/npm/platforms/$TARGET/bin/sparx" ]; then
-  cp "$V2/packaging/npm/platforms/$TARGET/bin/sparx" "$PLATDIR/bin/"
-elif [ -f "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" ]; then
+# Use the release-built binary from dist/ (has the correct version stamp).
+# Fall back to the platforms/ tree only for local dev where dist/ doesn't exist.
+if [ -f "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" ]; then
   tar -xzf "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" -C /tmp "sparx-$VERSION-$TARGET/bin/sparx"
   cp "/tmp/sparx-$VERSION-$TARGET/bin/sparx" "$PLATDIR/bin/"
+elif [ -f "$V2/packaging/npm/platforms/$TARGET/bin/sparx" ]; then
+  cp "$V2/packaging/npm/platforms/$TARGET/bin/sparx" "$PLATDIR/bin/"
 else
   echo "  SKIP  no binary available for $TARGET - skipping npm e2e"
   exit 0
