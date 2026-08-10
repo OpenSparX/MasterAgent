@@ -1,0 +1,48 @@
+graph TB
+    subgraph "User Layer"
+        User[👤 User Input<br/>Voice/Text/Gesture]
+    end
+
+    subgraph "Edge Device - Sparx Agent Framework"
+        Preprocess[📝 Preprocessing<br/>UTF-8 normalization<br/>Parameter extraction]
+        Memory[🧠 Short-term Memory<br/>Conversation history<br/>User preferences]
+        Skills[⚡ Deterministic Skills<br/>Pattern matching<br/>Rule-based routing]
+        Intent[🎯 Intent Recognition<br/>Skill selection<br/>Confidence scoring]
+
+        subgraph "Reasoning Engine"
+            NPU[🔥 Qualcomm NPU<br/>QNN SDK<br/>Hardware acceleration]
+            Model[🤖 LLM<br/>Qwen2-4B / Qwen3-4B]
+        end
+
+        Orchestrator[🎼 Task Orchestrator<br/>DAG execution<br/>Parallel tasks]
+        MCP[🔌 MCP Services<br/>Vehicle control<br/>Navigation<br/>Smart home]
+        WAL[💾 WAL Recovery<br/>Crash safety<br/>Unknown state]
+
+        Result[✅ Response Generator<br/>Natural language<br/>Action confirmation]
+    end
+
+    subgraph "External Services"
+        Device[🚗 Vehicle CAN Bus<br/>🏠 Smart Home<br/>📡 IoT Devices]
+    end
+
+    User --> Preprocess
+    Preprocess --> Memory
+    Memory --> Skills
+    Skills -->|Rule match| Intent
+    Skills -->|Need reasoning| Intent
+    Intent -->|Deterministic| Result
+    Intent -->|Complex query| NPU
+    NPU --> Model
+    Model --> Orchestrator
+    Orchestrator --> MCP
+    Orchestrator --> WAL
+    MCP --> Device
+    MCP --> Result
+    WAL --> Result
+    Result --> User
+
+    style NPU fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px
+    style WAL fill:#4ecdc4,stroke:#0c8599,stroke-width:3px
+    style MCP fill:#ffe66d,stroke:#fab005,stroke-width:3px
+    style User fill:#a8dadc,stroke:#457b9d
+    style Result fill:#95e1d3,stroke:#38ada9

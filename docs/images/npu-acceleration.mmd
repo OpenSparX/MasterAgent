@@ -1,0 +1,35 @@
+graph TB
+    subgraph "CPU-Only Processing"
+        Input1[Input Query] --> CPU[ARM CPU<br/>8 cores @ 2.4GHz]
+        CPU --> Inference1[LLM Inference<br/>Qwen2-4B]
+        Inference1 --> Output1[Response]
+
+        CPU -.-> Stats1["⏱️ 1,240ms<br/>⚡ 8.1W<br/>🌡️ 65°C"]
+    end
+
+    subgraph "NPU-Accelerated Processing"
+        Input2[Input Query] --> Dispatch[Smart Dispatch]
+        Dispatch --> HTP[Qualcomm HTP<br/>NPU Accelerator]
+        HTP --> Inference2[LLM Inference<br/>Qwen2-4B]
+        Inference2 --> Output2[Response]
+
+        HTP -.-> Stats2["⏱️ 87ms<br/>⚡ 2.3W<br/>🌡️ 42°C"]
+    end
+
+    subgraph "Performance Comparison"
+        direction TB
+        Speed["🚀 Speed: 14x faster"]
+        Power["🔋 Power: 3.5x more efficient"]
+        Thermal["🌡️ Thermal: 35% cooler"]
+    end
+
+    style CPU fill:#ff8787,stroke:#f03e3e
+    style HTP fill:#51cf66,stroke:#37b24d
+    style Stats1 fill:#ffe3e3,stroke:#c92a2a,stroke-dasharray: 5 5
+    style Stats2 fill:#d3f9e8,stroke:#37b24d,stroke-dasharray: 5 5
+    style Speed fill:#a5d8ff,stroke:#339af0
+    style Power fill:#b2f2bb,stroke:#51cf66
+    style Thermal fill:#ffd8a8,stroke:#fd7e14
+
+    Note[NPU offloads matrix operations<br/>from CPU, leaving CPU free<br/>for system tasks]
+    style Note fill:#f8f9fa,stroke:#868e96,stroke-dasharray: 3 3

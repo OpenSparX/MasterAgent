@@ -32,7 +32,7 @@ static void printUsage() {
     devices           List connected devices and their NPU capabilities
     deploy            Deploy agent to a connected device
     doctor            Diagnose device readiness and config issues
-    demo              Run built-in demos (crash recovery, streaming)
+    demo              Run built-in demos (automotive, crash recovery, streaming)
     shell             Interactive session with a deployed agent
 
   Options:
@@ -41,10 +41,10 @@ static void printUsage() {
 
   Examples:
     sparx init my-agent
+    sparx demo automotive              # 30-second killer demo
     sparx run
     sparx deploy --device 1
     sparx doctor
-    sparx demo crash --mid-tool-call
 
 )" << std::endl;
 }

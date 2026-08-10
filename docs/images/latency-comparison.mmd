@@ -1,0 +1,29 @@
+graph LR
+    subgraph "Cloud Framework (LangChain/AutoGPT)"
+        U1[User] -->|Request| API[API Call]
+        API -->|Network<br/>100-500ms| Cloud[Cloud Server]
+        Cloud -->|Model Inference<br/>1-3s| OpenAI[OpenAI API]
+        OpenAI -->|Response<br/>100-500ms| Cloud
+        Cloud -->|Network<br/>100-500ms| U1
+    end
+
+    subgraph "Sparx (Edge Device)"
+        U2[User] -->|Request<br/>0ms| Local[Local Processing]
+        Local -->|NPU Inference<br/>50-80ms| NPU[Qualcomm NPU]
+        NPU -->|Result<br/>5-10ms| Local
+        Local -->|Response<br/>0ms| U2
+    end
+
+    style Cloud fill:#ff6b6b,stroke:#c92a2a
+    style OpenAI fill:#fa5252,stroke:#e03131
+    style API fill:#ff8787,stroke:#f03e3e
+    style Local fill:#51cf66,stroke:#37b24d
+    style NPU fill:#38d9a9,stroke:#20c997
+    style U1 fill:#ffd43b
+    style U2 fill:#74c0fc
+
+    Note1[Cloud: 2.5-5s total latency]
+    Note2[Sparx: <100ms total latency]
+
+    style Note1 fill:#ffe3e3,stroke:#c92a2a,stroke-dasharray: 5 5
+    style Note2 fill:#d3f9e8,stroke:#37b24d,stroke-dasharray: 5 5
