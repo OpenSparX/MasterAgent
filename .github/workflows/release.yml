@@ -77,7 +77,8 @@ jobs:
           - target: darwin-arm64
             runner: macos-14
           - target: darwin-x64
-            runner: macos-13
+            runner: macos-14
+            cross_darwin_x64: true
           - target: linux-x64
             runner: ubuntu-22.04
           - target: linux-arm64
@@ -115,11 +116,20 @@ jobs:
       # compatibility rather than the arch flag. 11.0 covers every Apple
       # Silicon machine and Intel Macs back to Big Sur.
       - name: Build (native)
-        if: matrix.cross == ''
+        if: matrix.cross == '' && matrix.cross_darwin_x64 != true
         env:
           SPARX_VERSION: ${{ steps.ver.outputs.version }}
           SPARX_TARGET: ${{ matrix.target }}
           MACOSX_DEPLOYMENT_TARGET: '11.0'
+        run: ./scripts/build_release.sh
+
+      - name: Build (darwin-x64 on arm64)
+        if: matrix.cross_darwin_x64 == true
+        env:
+          SPARX_VERSION: ${{ steps.ver.outputs.version }}
+          SPARX_TARGET: darwin-x64
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+          SPARX_CMAKE_EXTRA: -DCMAKE_OSX_ARCHITECTURES=x86_64
         run: ./scripts/build_release.sh
 
       - name: Build (cross)
