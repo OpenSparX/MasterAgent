@@ -1,0 +1,26 @@
+name: smart-home
+version: "1.0.0"
+description: "Smart home control agent via MCP services"
+
+model:
+  id: qwen3-4b
+  context_length: 4096
+  max_output_tokens: 256
+  backend: auto
+
+skills:
+  - lights
+  - thermostat
+  - security
+
+routing:
+  deterministic_first: true
+  confidence_threshold: 0.85
+
+mcp_services:
+  - home.lights
+  - home.thermostat
+  - home.security
+
+reliability: D1
+runtime: auto

@@ -1,0 +1,35 @@
+name: navigation
+description: "Navigate to destinations, find POIs"
+trigger:
+  patterns:
+    - "导航"
+    - "去"
+    - "最近的"
+    - "充电站"
+    - "加油站"
+    - "navigate"
+    - "go to"
+    - "nearest"
+    - "charging station"
+    - "gas station"
+  intent: navigation
+
+parameters:
+  destination:
+    type: string
+    extract_from: context
+  poi_type:
+    type: enum
+    values: [charging_station, gas_station, parking, restaurant, hospital]
+
+handler:
+  type: hybrid   # deterministic POI lookup + model for complex queries
+  service: vehicle.navigation
+  actions:
+    - field: destination
+      mcp_call: "vehicle.navigation.setDestination"
+    - field: poi_type
+      mcp_call: "vehicle.navigation.findNearest"
+  response_template: |
+    已为您规划到{destination}的路线，预计{eta}分钟到达。
+    Route to {destination} planned, ETA {eta} minutes.

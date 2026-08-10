@@ -1,0 +1,45 @@
+name: climate_control
+description: "Control AC, heating, ventilation, and circulation"
+trigger:
+  patterns:
+    - "空调"
+    - "温度"
+    - "内循环"
+    - "外循环"
+    - "制冷"
+    - "制热"
+    - "AC"
+    - "air conditioning"
+    - "temperature"
+    - "circulation"
+    - "heating"
+    - "cooling"
+  intent: climate_control
+
+parameters:
+  power:
+    type: enum
+    values: [on, off]
+    extract_from: ["打开", "关闭", "turn on", "turn off"]
+  temperature:
+    type: number
+    range: [16, 32]
+    unit: celsius
+  mode:
+    type: enum
+    values: [interior, exterior, auto]
+    extract_from: ["内循环", "外循环", "自动", "interior", "exterior", "auto"]
+
+handler:
+  type: deterministic
+  service: vehicle.climate
+  actions:
+    - field: power
+      mcp_call: "vehicle.climate.setPower"
+    - field: temperature
+      mcp_call: "vehicle.climate.setTemperature"
+    - field: mode
+      mcp_call: "vehicle.climate.setCirculation"
+  response_template: |
+    好的，已为您{power_action}空调{temperature_info}{mode_info}。
+    OK, AC is now {power_en}{temperature_en}{mode_en}.

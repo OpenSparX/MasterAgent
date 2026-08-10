@@ -1,0 +1,38 @@
+name: lights
+description: "Control room lighting"
+trigger:
+  patterns:
+    - "灯"
+    - "开灯"
+    - "关灯"
+    - "亮度"
+    - "light"
+    - "lamp"
+    - "brightness"
+    - "turn on"
+    - "turn off"
+  intent: lights_control
+
+parameters:
+  room:
+    type: enum
+    values: [living_room, bedroom, kitchen, bathroom, hallway]
+  action:
+    type: enum
+    values: [on, off, dim, brighten]
+  brightness:
+    type: number
+    range: [0, 100]
+    unit: percent
+
+handler:
+  type: deterministic
+  service: home.lights
+  actions:
+    - field: action
+      mcp_call: "home.lights.setStatus"
+    - field: brightness
+      mcp_call: "home.lights.setBrightness"
+  response_template: |
+    已将{room}的灯{action_cn}。
+    {room} lights {action_en}.

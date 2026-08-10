@@ -1,0 +1,29 @@
+name: iot-edge
+version: "1.0.0"
+description: "Battery-optimized IoT edge agent"
+
+model:
+  id: qwen3-4b
+  context_length: 2048
+  max_output_tokens: 128
+  backend: auto
+
+skills:
+  - sensor_alert
+  - device_status
+
+routing:
+  deterministic_first: true
+  confidence_threshold: 0.90
+
+mcp_services:
+  - iot.sensors
+  - iot.actuators
+
+reliability: D1
+runtime: auto
+
+power:
+  mode: low_power
+  wake_on: [sensor_threshold, scheduled, manual]
+  sleep_after_idle_ms: 5000

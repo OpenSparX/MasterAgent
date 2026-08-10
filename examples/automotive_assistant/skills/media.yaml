@@ -1,0 +1,36 @@
+name: media
+description: "Play music, podcasts, audiobooks"
+trigger:
+  patterns:
+    - "播放"
+    - "音乐"
+    - "歌"
+    - "暂停"
+    - "下一首"
+    - "play"
+    - "music"
+    - "song"
+    - "pause"
+    - "next"
+    - "playlist"
+  intent: media_control
+
+parameters:
+  action:
+    type: enum
+    values: [play, pause, next, previous, volume_up, volume_down]
+  query:
+    type: string
+    extract_from: context
+
+handler:
+  type: deterministic
+  service: vehicle.media
+  actions:
+    - field: action
+      mcp_call: "vehicle.media.control"
+    - field: query
+      mcp_call: "vehicle.media.search"
+  response_template: |
+    正在为您{action_cn}{query_cn}。
+    {action_en} {query_en}.

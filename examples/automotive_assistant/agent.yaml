@@ -1,0 +1,30 @@
+name: automotive-assistant
+version: "1.0.0"
+description: "On-device voice assistant for automotive use"
+
+model:
+  id: qwen3-4b
+  context_length: 4096
+  max_output_tokens: 256
+  backend: auto   # auto → NPU if available, else llama.cpp CPU
+
+skills:
+  - climate_control
+  - navigation
+  - media
+  - phone
+  - vehicle_status
+
+routing:
+  deterministic_first: true
+  confidence_threshold: 0.85
+
+mcp_services:
+  - vehicle.climate
+  - vehicle.navigation
+  - vehicle.media
+  - vehicle.phone
+  - vehicle.status
+
+reliability: D2
+runtime: auto
