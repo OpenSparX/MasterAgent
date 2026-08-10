@@ -7,8 +7,12 @@
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 V2="$REPO_ROOT"
-VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
-VERSION="${VERSION:-2.1.0}"
+if [[ -n "${SPARX_VERSION:-}" ]]; then
+  VERSION="$SPARX_VERSION"
+else
+  VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
+  VERSION="${VERSION:-2.1.0}"
+fi
 # Detect current platform to match build_release.sh output
 detect_target() {
     local os arch

@@ -40,6 +40,14 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install build deps (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
@@ -52,8 +60,12 @@ jobs:
       - name: Sync npm package versions to tag
         run: ./scripts/sync_npm_version.sh
       - name: Build release artifact
+        env:
+          SPARX_VERSION: ${{ steps.ver.outputs.version }}
         run: ./scripts/build_release.sh
       - name: Packaging tests
+        env:
+          SPARX_VERSION: ${{ steps.ver.outputs.version }}
         run: ./scripts/tests/run_all.sh
 
   build:

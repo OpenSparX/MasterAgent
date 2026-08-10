@@ -83,8 +83,12 @@ echo "=== artifact name matches what install.sh requests ==="
 ART=$(ls "$V2/dist"/sparx-*.tar.gz 2>/dev/null | head -1 | xargs basename 2>/dev/null)
 # Use the same extraction method we already validated above (line 30-31).
 HOST_TARGET=$(PATH="$PATH" bash -c "source $WORK/build_fn.sh; detect_target" 2>/dev/null)
-TEST_VERSION=$(git describe --tags --always 2>/dev/null | sed 's/^v//')
-TEST_VERSION="${TEST_VERSION:-0.0.0-dev}"
+if [[ -n "${SPARX_VERSION:-}" ]]; then
+  TEST_VERSION="$SPARX_VERSION"
+else
+  TEST_VERSION=$(git describe --tags --always 2>/dev/null | sed 's/^v//')
+  TEST_VERSION="${TEST_VERSION:-0.0.0-dev}"
+fi
 EXPECT="sparx-$TEST_VERSION-$HOST_TARGET.tar.gz"
 if [ -z "$ART" ]; then
   echo "  PASS  no artifact in dist/ (CI builds separately)"; PASS=$((PASS+1))

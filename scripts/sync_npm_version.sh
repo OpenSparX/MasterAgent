@@ -6,8 +6,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
-VERSION="${VERSION:-0.0.0-dev}"
+if [[ -n "${SPARX_VERSION:-}" ]]; then
+  VERSION="$SPARX_VERSION"
+else
+  VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
+  VERSION="${VERSION:-0.0.0-dev}"
+fi
 
 echo "Syncing npm package versions to $VERSION"
 
