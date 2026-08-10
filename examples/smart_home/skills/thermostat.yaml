@@ -1,0 +1,45 @@
+name: thermostat
+description: "Control home temperature and HVAC system"
+trigger:
+  patterns:
+    - "温度"
+    - "空调"
+    - "暖气"
+    - "制冷"
+    - "制热"
+    - "temperature"
+    - "heating"
+    - "cooling"
+    - "thermostat"
+    - "HVAC"
+    - "air conditioning"
+  intent: thermostat_control
+
+parameters:
+  target_temperature:
+    type: number
+    range: [16, 30]
+    unit: celsius
+    extract_from: ["temperature", "temp", "度", "°C"]
+  mode:
+    type: enum
+    values: [heat, cool, auto, off]
+    extract_from: ["heat", "cool", "auto", "off", "制热", "制冷", "自动", "关闭"]
+  fan_speed:
+    type: enum
+    values: [low, medium, high, auto]
+    extract_from: ["low", "medium", "high", "auto", "低", "中", "高", "自动"]
+
+handler:
+  type: deterministic
+  service: home.climate
+  actions:
+    - field: target_temperature
+      mcp_call: "home.climate.setTemperature"
+    - field: mode
+      mcp_call: "home.climate.setMode"
+    - field: fan_speed
+      mcp_call: "home.climate.setFanSpeed"
+  response_template: |
+    温控系统已设置为 {target_temperature}°C，模式: {mode}
+    Thermostat set to {target_temperature}°C, mode: {mode}

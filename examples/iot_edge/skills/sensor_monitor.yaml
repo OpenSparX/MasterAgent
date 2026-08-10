@@ -1,0 +1,44 @@
+name: sensor_monitor
+description: "Monitor sensor readings and trigger alerts on threshold violations"
+trigger:
+  patterns:
+    - "sensor"
+    - "temperature"
+    - "humidity"
+    - "pressure"
+    - "传感器"
+    - "温度"
+    - "湿度"
+    - "气压"
+    - "monitor"
+    - "reading"
+    - "check"
+  intent: sensor_monitor
+
+parameters:
+  sensor_type:
+    type: enum
+    values: [temperature, humidity, pressure, motion, light]
+    extract_from: ["temperature", "humidity", "pressure", "motion", "light", "温度", "湿度", "气压", "运动", "光照"]
+  threshold:
+    type: number
+    range: [-50, 150]
+    unit: depends_on_type
+  comparison:
+    type: enum
+    values: [above, below, equals]
+    extract_from: ["above", "below", "equals", "大于", "小于", "等于", "超过", "低于"]
+
+handler:
+  type: deterministic
+  service: iot.sensors
+  actions:
+    - field: sensor_type
+      mcp_call: "iot.sensors.getReading"
+    - field: threshold
+      mcp_call: "iot.sensors.setThreshold"
+    - field: comparison
+      mcp_call: "iot.sensors.setAlertCondition"
+  response_template: |
+    传感器监控已配置: {sensor_type} {comparison} {threshold}
+    Sensor monitoring configured: {sensor_type} {comparison} {threshold}

@@ -1,0 +1,42 @@
+name: data_sync
+description: "Synchronize local sensor data to cloud or edge gateway"
+trigger:
+  patterns:
+    - "sync"
+    - "upload"
+    - "backup"
+    - "同步"
+    - "上传"
+    - "备份"
+    - "replicate"
+    - "transfer"
+    - "send data"
+  intent: data_sync
+
+parameters:
+  target:
+    type: enum
+    values: [cloud, gateway, local, all]
+    extract_from: ["cloud", "gateway", "local", "all", "云端", "网关", "本地", "全部"]
+  data_range:
+    type: enum
+    values: [last_hour, last_day, last_week, all, custom]
+    extract_from: ["last hour", "last day", "last week", "all", "custom", "最近一小时", "最近一天", "最近一周", "全部", "自定义"]
+  priority:
+    type: enum
+    values: [high, normal, low, background]
+    extract_from: ["high", "normal", "low", "background", "高", "正常", "低", "后台"]
+
+handler:
+  type: deterministic
+  service: iot.actuators
+  actions:
+    - field: target
+      mcp_call: "iot.actuators.setTarget"
+    - field: data_range
+      mcp_call: "iot.actuators.selectDataRange"
+    - field: priority
+      mcp_call: "iot.actuators.setPriority"
+  response_template: |
+    数据同步已启动: {data_range} → {target} (优先级: {priority})
+    Data sync started: {data_range} → {target} (priority: {priority})

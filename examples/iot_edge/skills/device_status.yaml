@@ -1,0 +1,39 @@
+name: device_status
+description: "Query device health, battery level, and connectivity status"
+trigger:
+  patterns:
+    - "status"
+    - "battery"
+    - "power"
+    - "connection"
+    - "health"
+    - "状态"
+    - "电量"
+    - "电池"
+    - "连接"
+    - "健康"
+    - "online"
+    - "offline"
+  intent: device_status
+
+parameters:
+  device_id:
+    type: string
+    required: false
+    extract_from: ["device", "设备", "node", "节点"]
+  query_type:
+    type: enum
+    values: [battery, connectivity, uptime, health, all]
+    extract_from: ["battery", "connection", "uptime", "health", "all", "电量", "连接", "运行时间", "健康", "全部"]
+
+handler:
+  type: deterministic
+  service: iot.sensors
+  actions:
+    - field: device_id
+      mcp_call: "iot.sensors.getDeviceInfo"
+    - field: query_type
+      mcp_call: "iot.sensors.queryStatus"
+  response_template: |
+    设备状态: {device_info}
+    Device status: {device_info_en}

@@ -1,0 +1,46 @@
+name: security
+description: "Control door locks, alarm system, and security cameras"
+trigger:
+  patterns:
+    - "锁门"
+    - "开锁"
+    - "门锁"
+    - "警报"
+    - "监控"
+    - "摄像头"
+    - "lock"
+    - "unlock"
+    - "alarm"
+    - "security"
+    - "camera"
+    - "arm"
+    - "disarm"
+  intent: security_control
+
+parameters:
+  device_type:
+    type: enum
+    values: [door_lock, alarm, camera, all]
+    extract_from: ["door", "lock", "alarm", "camera", "all", "门锁", "警报", "摄像头", "全部"]
+  action:
+    type: enum
+    values: [lock, unlock, arm, disarm, record, snapshot]
+    extract_from: ["lock", "unlock", "arm", "disarm", "record", "snapshot", "上锁", "解锁", "布防", "撤防", "录制", "拍照"]
+  location:
+    type: enum
+    values: [front_door, back_door, garage, all]
+    extract_from: ["front", "back", "garage", "all", "前门", "后门", "车库", "全部"]
+
+handler:
+  type: deterministic
+  service: home.security
+  actions:
+    - field: device_type
+      mcp_call: "home.security.selectDevice"
+    - field: action
+      mcp_call: "home.security.executeAction"
+    - field: location
+      mcp_call: "home.security.setLocation"
+  response_template: |
+    安全系统已执行: {location} {device_type} {action}
+    Security system executed: {location} {device_type} {action}

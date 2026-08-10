@@ -18,6 +18,7 @@ cd "$REPO_ROOT"
 SUITES=(
     test_triple_contract.sh
     test_licence_gate.sh
+    test_cli_commands.sh
     test_install_e2e.sh
     test_npm_e2e.sh
 )

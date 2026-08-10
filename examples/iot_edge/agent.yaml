@@ -9,8 +9,9 @@ model:
   backend: auto
 
 skills:
-  - sensor_alert
+  - sensor_monitor
   - device_status
+  - data_sync
 
 routing:
   deterministic_first: true
