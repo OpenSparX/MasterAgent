@@ -1,0 +1,39 @@
+# OpenSparX Agent Spec — agent.yaml
+#
+# This is the file a developer writes. It is the entry point to the framework.
+# It must be:
+#   1. Readable in 10 seconds (what does this agent do?)
+#   2. Runnable without modification (sparx run must work on first try)
+#   3. Portable across runtimes (same file runs on CPU, phone NPU, automotive NPU)
+
+name: my-first-agent
+version: "0.1.0"
+
+# Model configuration — runtime-agnostic.
+# sparx resolves this to the best available backend at deploy time.
+model:
+  id: qwen3-4b            # logical name, mapped to physical artifact per device
+  context_length: 4096
+  max_output_tokens: 512
+
+# Skills are the tools the agent can invoke.
+# Each skill maps to a deterministic handler or an MCP endpoint.
+skills:
+  - climate.set
+  - climate.get
+  - navigation.route
+
+# Routing controls how user input reaches the model (or doesn't).
+# deterministic_first: true means rules and skill matchers run before inference.
+# If they resolve the intent, the model is never called — this is the fast path.
+routing:
+  deterministic_first: true
+  confidence_threshold: 0.85
+
+# Reliability tier — controls WAL, idempotency, and recovery behavior.
+# D2 is the default: WAL-backed, idempotent tool calls, Unknown on ambiguous side effects.
+reliability: D2
+
+# Runtime hint — optional, overridden by sparx deploy --device detection.
+# Values: auto | cpu | npu
+runtime: auto

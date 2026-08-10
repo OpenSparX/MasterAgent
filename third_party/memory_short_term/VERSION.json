@@ -1,0 +1,15 @@
+{
+  "package": "memory-short-term-integration",
+  "package_version": "2026.07.30",
+  "git_commit": "229d5f577de2",
+  "mode": "short_term_only",
+  "default_endpoint": "http://127.0.0.1:8720",
+  "long_term_memory_included": false,
+  "llm_required": false,
+  "embedding_required": false,
+  "bundled_runtime_libraries": [
+    "libgcc_s_seh-1.dll",
+    "libstdc++-6.dll",
+    "libwinpthread-1.dll"
+  ]
+}

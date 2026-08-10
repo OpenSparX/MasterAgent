@@ -1,0 +1,39 @@
+{
+  "name": "@sparx/cli",
+  "version": "2.1.0",
+  "description": "On-device Agent framework for Qualcomm and ARM platforms",
+  "keywords": [
+    "agent",
+    "llm",
+    "on-device",
+    "qualcomm",
+    "npu",
+    "edge-ai"
+  ],
+  "homepage": "https://github.com/OpenSparX/MasterAgent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenSparX/MasterAgent.git"
+  },
+  "license": "Apache-2.0",
+  "bin": {
+    "sparx": "bin/sparx.js"
+  },
+  "files": [
+    "bin/sparx.js",
+    "install.js",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "optionalDependencies": {
+    "@sparx/cli-darwin-arm64": "2.1.0",
+    "@sparx/cli-darwin-x64": "2.1.0",
+    "@sparx/cli-linux-arm64": "2.1.0",
+    "@sparx/cli-linux-x64": "2.1.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

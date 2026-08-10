@@ -1,0 +1,153 @@
+name: release
+
+# Tag-driven. Pushing v2.1.0 builds every platform, gates on the licence scan,
+# and publishes a GitHub Release. workflow_dispatch is kept so a release can be
+# re-cut without moving a tag.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (without leading v)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate 1: nothing Qualcomm-licensed may enter a published artifact.
+  # Runs first and blocks every build job. This is the one check whose failure
+  # is a legal problem rather than a bug, so it is deliberately not skippable.
+  # ---------------------------------------------------------------------------
+  licence-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for Qualcomm-proprietary files
+        run: ./scripts/check_license.sh
+
+  # ---------------------------------------------------------------------------
+  # Gate 2: the test suite. A release must not be cut from a red tree.
+  # ---------------------------------------------------------------------------
+  test:
+    needs: [licence-gate]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DMASTER_AGENT_BUILD_CLI=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel
+      - name: C++ tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Build release artifact
+        run: ./scripts/build_release.sh
+      - name: Packaging tests
+        run: ./scripts/tests/run_all.sh
+
+  build:
+    needs: [licence-gate, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-14
+          - target: darwin-x64
+            runner: macos-13
+          - target: linux-x64
+            runner: ubuntu-22.04
+          - target: linux-arm64
+            runner: ubuntu-22.04
+            cross: aarch64-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # build_release.sh uses git describe
+
+      - name: Install Linux deps
+        if: startsWith(matrix.target, 'linux')
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+
+      - name: Install cross toolchain
+        if: matrix.cross != ''
+        run: sudo apt-get install -y g++-aarch64-linux-gnu
+
+      - name: Install macOS deps
+        if: startsWith(matrix.target, 'darwin')
+        run: brew install ninja || true
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # macOS runners are single-arch, so the deployment target is what pins
+      # compatibility rather than the arch flag. 11.0 covers every Apple
+      # Silicon machine and Intel Macs back to Big Sur.
+      - name: Build (native)
+        if: matrix.cross == ''
+        env:
+          SPARX_VERSION: ${{ steps.ver.outputs.version }}
+          SPARX_TARGET: ${{ matrix.target }}
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+        run: ./scripts/build_release.sh
+
+      - name: Build (cross)
+        if: matrix.cross != ''
+        env:
+          SPARX_VERSION: ${{ steps.ver.outputs.version }}
+          SPARX_TARGET: ${{ matrix.target }}
+          CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
+          STRIP: aarch64-linux-gnu-strip
+          SPARX_CMAKE_EXTRA: >-
+            -DCMAKE_SYSTEM_NAME=Linux
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64
+        run: ./scripts/build_release.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sparx-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # One combined SHA256SUMS alongside the per-file .sha256, so a user can
+      # verify the whole release with a single `shasum -c`.
+      - name: Collect checksums
+        run: |
+          cd artifacts
+          ls -la
+          cat ./*.sha256 > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

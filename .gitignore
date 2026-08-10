@@ -1,0 +1,33 @@
+# Build outputs
+build/
+build-*/
+dist/
+*.tar.gz
+*.sha256
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.log
+.cache/
+
+# npm
+node_modules/
+package-lock.json
+
+# Qualcomm proprietary (should never be committed)
+genai_lib/
+utilities/
+qnn_model_prepare_*.py
+libGenie*.so
+libQnn*.so
+libSnpe*.so
+*.serialized.bin
