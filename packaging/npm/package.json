@@ -1,6 +1,6 @@
 {
   "name": "@sparx/cli",
-  "version": "2.1.11",
+  "version": "2.1.13",
   "description": "On-device Agent framework for Qualcomm and ARM platforms",
   "keywords": [
     "agent",
@@ -28,10 +28,10 @@
     "postinstall": "node install.js"
   },
   "optionalDependencies": {
-    "@sparx/cli-darwin-arm64": "2.1.11",
-    "@sparx/cli-darwin-x64": "2.1.11",
-    "@sparx/cli-linux-arm64": "2.1.11",
-    "@sparx/cli-linux-x64": "2.1.11"
+    "@sparx/cli-darwin-arm64": "2.1.13",
+    "@sparx/cli-darwin-x64": "2.1.13",
+    "@sparx/cli-linux-arm64": "2.1.13",
+    "@sparx/cli-linux-x64": "2.1.13"
   },
   "engines": {
     "node": ">=16"
