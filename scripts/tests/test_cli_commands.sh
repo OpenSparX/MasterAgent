@@ -9,27 +9,31 @@ V2="$REPO_ROOT"
 VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
 VERSION="${VERSION:-2.1.0}"
 
-# Build the CLI binary if not present
-if [ ! -f "$V2/build/sparx" ]; then
-  echo "=== Building sparx CLI ==="
-  cd "$V2"
-  mkdir -p build && cd build
-  cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1 || {
-    echo "  SKIP  cmake not available or build failed"
-    exit 0
-  }
-  make -j4 >/dev/null 2>&1 || {
-    echo "  SKIP  make failed"
-    exit 0
-  }
-  cd "$V2"
-fi
+# The CLI target installs to build/cli/sparx (see cli/CMakeLists.txt), not
+# build/sparx. Prefer an already-built binary; fall back to a dist/ one.
+find_sparx() {
+  for c in "$V2/build/cli/sparx" "$V2/build/sparx" "$V2/dist/sparx"; do
+    [ -x "$c" ] && { echo "$c"; return 0; }
+  done
+  return 1
+}
 
-SPARX="$V2/build/sparx"
-if [ ! -x "$SPARX" ]; then
-  echo "  SKIP  sparx binary not found at $SPARX"
-  exit 0
+if ! SPARX="$(find_sparx)"; then
+  echo "=== Building sparx CLI ==="
+  cmake -S "$V2" -B "$V2/build" -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1 || {
+    echo "  FAIL  cmake configure failed"
+    exit 1
+  }
+  cmake --build "$V2/build" --target sparx --parallel >/dev/null 2>&1 || {
+    echo "  FAIL  build of target 'sparx' failed"
+    exit 1
+  }
+  SPARX="$(find_sparx)" || {
+    echo "  FAIL  build succeeded but no sparx binary found"
+    exit 1
+  }
 fi
+echo "=== Using sparx: ${SPARX#$V2/} ==="
 
 ROOT=/tmp/sparx_cli_e2e
 PASS=0; FAIL=0

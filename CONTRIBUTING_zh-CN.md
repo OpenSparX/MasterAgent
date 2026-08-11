@@ -200,7 +200,9 @@ Closes #123
 - `genai_lib/`目录下的所有文件
 - 文件名匹配`qnn_model_prepare_*.py`的所有文件
 - `utilities/`目录下的Qualcomm专有工具
-- 任何包含`Confidential and Proprietary - Qualcomm Technologies, Inc.`头部的文件
+- 任何带有 Qualcomm 专有版权头部的文件（形如 `Confidential and` + `Proprietary - Qualcomm` + `Technologies, Inc.` 的连续声明）
+
+> 注意：上面刻意把该头部拆分书写。若在文档中原样粘贴完整头部，`scripts/check_license.sh` 会把这份文档本身判定为专有文件并阻止发布。
 
 CI会自动检查这些限制（`scripts/tests/test_licence_gate.sh`）。
 
