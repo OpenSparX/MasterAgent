@@ -45,6 +45,7 @@ static void printUsage() {
     sparx init my-agent
     sparx add skill climate_control
     sparx demo automotive              # 30-second killer demo
+    sparx plan show plans/route.yaml   # visualize an execution plan
     sparx run
     sparx deploy --device 1
     sparx doctor

@@ -179,6 +179,10 @@ sparx init my-agent
 # Run locally
 sparx run
 
+# Build and validate execution plans
+sparx plan show plans/turn-off-ac.yaml
+sparx plan export plans/route.yaml --format=mermaid
+
 # Deploy to device
 sparx devices              # List connected devices
 sparx deploy --device 1    # Deploy to SA8295 board
@@ -442,6 +446,10 @@ sparx init my-agent
 
 # 本地运行
 sparx run
+
+# 构建和验证执行计划
+sparx plan show plans/turn-off-ac.yaml
+sparx plan export plans/route.yaml --format=mermaid
 
 # 部署到设备
 sparx devices              # 列出已连接设备
