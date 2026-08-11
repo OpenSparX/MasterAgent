@@ -49,10 +49,15 @@ echo "    $FORMULA"
 # Uses a temp file + mv rather than sed -i, because BSD and GNU sed disagree on
 # -i's argument and this script runs on both macOS and Linux CI.
 cp "$FORMULA" "$FORMULA.tmp"
-# Version appears in the version stanza and inside every URL.
+# Version appears in the version stanza, in the /download/vX.Y.Z/ path, and in
+# the tarball filename. The filename gets one expression per OS rather than a
+# `\(darwin\|linux\)` alternation: BSD sed's basic regex has no alternation, so
+# that pattern silently matches nothing on macOS and leaves the old version in
+# the filename while the path says the new one — a 404 on every brew install.
 sed -e "s|version \"[0-9][^\"]*\"|version \"$VERSION\"|" \
     -e "s|/download/v[0-9][^/]*/|/download/v$VERSION/|g" \
-    -e "s|sparx-[0-9][^-]*-\(darwin\|linux\)-|sparx-$VERSION-\1-|g" \
+    -e "s|sparx-[0-9][^-]*-darwin-|sparx-$VERSION-darwin-|g" \
+    -e "s|sparx-[0-9][^-]*-linux-|sparx-$VERSION-linux-|g" \
     "$FORMULA.tmp" > "$FORMULA"
 rm -f "$FORMULA.tmp"
 

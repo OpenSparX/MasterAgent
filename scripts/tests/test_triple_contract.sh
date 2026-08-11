@@ -79,8 +79,6 @@ FreeBSD|x86_64|FreeBSD
 BAD
 
 echo "=== artifact name matches what install.sh requests ==="
-# The real artifact on disk vs the URL install.sh would build.
-ART=$(ls "$V2/dist"/sparx-*.tar.gz 2>/dev/null | head -1 | xargs basename 2>/dev/null)
 # Use the same extraction method we already validated above (line 30-31).
 HOST_TARGET=$(PATH="$PATH" bash -c "source $WORK/build_fn.sh; detect_target" 2>/dev/null)
 if [[ -n "${SPARX_VERSION:-}" ]]; then
@@ -90,8 +88,25 @@ else
   TEST_VERSION="${TEST_VERSION:-0.0.0-dev}"
 fi
 EXPECT="sparx-$TEST_VERSION-$HOST_TARGET.tar.gz"
-if [ -z "$ART" ]; then
-  echo "  PASS  no artifact in dist/ (CI builds separately)"; PASS=$((PASS+1))
+# Look for this version's artifact specifically. Globbing all of dist/ and
+# taking head -1 picked whatever sorted first, so a leftover tarball from the
+# previous release failed the test even though the current build was correct.
+ART=""
+[ -f "$V2/dist/$EXPECT" ] && ART="$EXPECT"
+# Leftovers are how a release ships a stale binary, so distinguish two cases:
+# an empty dist/ is normal (CI builds each target in its own job), but a dist/
+# holding artifacts for *other* versions and none for this one means the build
+# never ran for this version — the install URL would 404.
+OTHERS=$(ls "$V2/dist"/sparx-*-"$HOST_TARGET".tar.gz 2>/dev/null \
+         | xargs -n1 basename 2>/dev/null | grep -v "^$EXPECT$" || true)
+if [ -n "$OTHERS" ]; then
+  echo "  note  other versions in dist/: $(echo "$OTHERS" | tr '\n' ' ')"
+fi
+if [ -z "$ART" ] && [ -n "$OTHERS" ]; then
+  echo "  FAIL  dist/ has $HOST_TARGET artifacts but none for $TEST_VERSION"
+  FAIL=$((FAIL+1))
+elif [ -z "$ART" ]; then
+  echo "  PASS  no artifact for $TEST_VERSION in dist/ (CI builds separately)"; PASS=$((PASS+1))
 elif [ -z "$HOST_TARGET" ]; then
   echo "  PASS  could not detect host target (cross-compile env)"; PASS=$((PASS+1))
 elif [ "$ART" = "$EXPECT" ]; then

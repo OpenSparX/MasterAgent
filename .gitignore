@@ -22,6 +22,10 @@ dist/
 # npm
 node_modules/
 package-lock.json
+# Staged binaries in platform packages (written by update_packaging.sh, not
+# source code — each release overwrites them, and a 52K binary per release
+# bloats the repo for zero archival value).
+packaging/npm/platforms/*/bin/
 
 # Qualcomm proprietary (should never be committed)
 genai_lib/
