@@ -3,6 +3,28 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.12] — 2026-08-10
+
+### Fixed
+- **The release has been blocked since v2.1.6 by one missing `env:` block.**
+  `release.yml` ran `sync_npm_version.sh` without `SPARX_VERSION`, unlike the two
+  steps after it. The script then fell back to `git describe --tags --always`, and
+  `actions/checkout` does not fetch tags — so describe returned a bare commit SHA
+  and every `package.json` was written with `"version": "7b3ee26"`. That surfaced
+  far downstream as five confusing `manifest wrong` / `optionalDependencies drift`
+  failures, which failed the packaging gate, which blocked publish. v2.1.7 through
+  v2.1.10 were tagged but never released.
+
+  Fixed in two places: the workflow now passes `SPARX_VERSION` to the sync step,
+  and `sync_npm_version.sh` refuses any value that is not valid semver instead of
+  silently writing a commit SHA into a version field. The guard names the likely
+  cause and the two ways to fix it, because the original failure gave no
+  indication of where the bad value came from.
+
+  Packaging suite: **76 passed / 18 failed → 94 passed / 0 failed.** These were
+  previously described in this project's own notes as "pre-existing version drift
+  from the unrun release workflow" — that was circular and wrong. The release did
+  not fail to run; it ran and failed, and this was why.
 ## [2.1.11] — 2026-08-10
 
 ### Changed
@@ -106,25 +128,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   from `tests/test_support.h`, which throws. The example test, the registration
   step, and the named test target (`preprocessing_test`, which does not exist —
   it is `test_preprocess`) are all corrected.
-- **The release has been blocked since v2.1.6 by one missing `env:` block.**
-  `release.yml` ran `sync_npm_version.sh` without `SPARX_VERSION`, unlike the two
-  steps after it. The script then fell back to `git describe --tags --always`, and
-  `actions/checkout` does not fetch tags — so describe returned a bare commit SHA
-  and every `package.json` was written with `"version": "7b3ee26"`. That surfaced
-  far downstream as five confusing `manifest wrong` / `optionalDependencies drift`
-  failures, which failed the packaging gate, which blocked publish. v2.1.7 through
-  v2.1.10 were tagged but never released.
 
-  Fixed in two places: the workflow now passes `SPARX_VERSION` to the sync step,
-  and `sync_npm_version.sh` refuses any value that is not valid semver instead of
-  silently writing a commit SHA into a version field. The guard names the likely
-  cause and the two ways to fix it, because the original failure gave no
-  indication of where the bad value came from.
-
-  Packaging suite: **76 passed / 18 failed → 94 passed / 0 failed.** These were
-  previously described in this project's own notes as "pre-existing version drift
-  from the unrun release workflow" — that was circular and wrong. The release did
-  not fail to run; it ran and failed, and this was why.
 
 ## [2.1.10] — 2026-08-10
 
