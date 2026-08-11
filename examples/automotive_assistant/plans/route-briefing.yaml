@@ -1,0 +1,22 @@
+# Multi-destination route: navigation, ETA, and traffic checked in parallel,
+# then a final briefing step that depends on all three.
+#
+# Demonstrates the DAG's parallel-then-join shape.
+
+plan: route-briefing
+priority: p1
+deadline_ms: 5000
+
+nodes:
+  - id: nav
+    action: vehicle.navigation.calculateRoute
+
+  - id: eta
+    action: vehicle.navigation.estimateArrival
+
+  - id: traffic
+    action: vehicle.navigation.getTrafficConditions
+
+  - id: briefing
+    action: assistant.compose.routeBriefing
+    after: [nav, eta, traffic]

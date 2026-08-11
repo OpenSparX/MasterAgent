@@ -18,5 +18,6 @@ int cmd_deploy(const std::vector<std::string>& args);
 int cmd_doctor(const std::vector<std::string>& args);
 int cmd_demo(const std::vector<std::string>& args);
 int cmd_shell(const std::vector<std::string>& args);
+int cmd_plan(const std::vector<std::string>& args);
 
 }  // namespace sparx

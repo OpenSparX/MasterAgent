@@ -35,6 +35,7 @@ static void printUsage() {
     doctor            Diagnose device readiness and config issues
     demo              Run built-in demos (automotive, crash recovery, streaming)
     shell             Interactive session with a deployed agent
+    plan              Build, validate, and visualize execution plans
 
   Options:
     --help, -h        Show this help
@@ -105,6 +106,7 @@ int main(int argc, char* argv[]) {
     if (cmd == "doctor") return sparx::cmd_doctor(args);
     if (cmd == "demo") return sparx::cmd_demo(args);
     if (cmd == "shell") return sparx::cmd_shell(args);
+    if (cmd == "plan") return sparx::cmd_plan(args);
 
     std::cerr << "  unknown command: " << cmd << "\n";
     std::cerr << "  run `sparx --help` for available commands\n";

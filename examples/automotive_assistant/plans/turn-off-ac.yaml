@@ -1,0 +1,23 @@
+# Turn off the AC after reading the current temperature.
+#
+# This is a 2-node sequential plan: read_temp must complete before set_ac runs,
+# because knowing the current temperature lets the system decide whether "off"
+# means "already off — no-op" or "was running — shut down compressor."
+#
+# Usage:
+#   sparx plan show examples/automotive_assistant/plans/turn-off-ac.yaml
+#   sparx plan export examples/automotive_assistant/plans/turn-off-ac.yaml --format=mermaid
+
+plan: turn-off-ac
+priority: p1
+deadline_ms: 3000
+
+nodes:
+  - id: read_temp
+    action: vehicle.climate.getTemperature
+
+  - id: set_ac
+    action: vehicle.climate.setPower
+    params:
+      power: "off"
+    after: [read_temp]
