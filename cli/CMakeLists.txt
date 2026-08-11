@@ -42,14 +42,35 @@ target_link_libraries(sparx PRIVATE
     MasterAgent::SparxRuntimes)
 
 # Version stamping. SPARX_VERSION is passed by the release workflow from the
-# git tag; a local build leaves it unset and sparx_main.cpp falls back to
-# "0.0.0-dev". SPARX_BUILD_TARGET is the release triple so `sparx version`
-# output in a bug report identifies which artifact the user actually has.
+# git tag. For local development builds, auto-detect from git describe so that
+# `sparx version` shows something useful without manual -D flags.
 if(NOT DEFINED SPARX_VERSION)
-    set(SPARX_VERSION "0.0.0-dev")
+    execute_process(
+        COMMAND git describe --tags --always
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE _git_version
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _git_rc)
+    if(_git_rc EQUAL 0 AND _git_version)
+        string(REGEX REPLACE "^v" "" SPARX_VERSION "${_git_version}")
+    else()
+        set(SPARX_VERSION "0.0.0-dev")
+    endif()
 endif()
 if(NOT DEFINED SPARX_GIT_SHA)
-    set(SPARX_GIT_SHA "unknown")
+    execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE _git_sha
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _sha_rc)
+    if(_sha_rc EQUAL 0 AND _git_sha)
+        set(SPARX_GIT_SHA "${_git_sha}")
+    else()
+        set(SPARX_GIT_SHA "unknown")
+    endif()
 endif()
 if(NOT DEFINED SPARX_BUILD_TARGET)
     set(SPARX_BUILD_TARGET "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
