@@ -9,9 +9,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 V2="$REPO_ROOT"
 if [[ -n "${SPARX_VERSION:-}" ]]; then
   VERSION="$SPARX_VERSION"
+  VERSION_PINNED=1
 else
   VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
   VERSION="${VERSION:-2.1.0}"
+  VERSION_PINNED=0
 fi
 # Detect current platform to match build_release.sh output
 detect_target() {
@@ -35,6 +37,28 @@ PASS=0; FAIL=0
 t_pass() { echo "  PASS  $1"; PASS=$((PASS+1)); }
 t_fail() { echo "  FAIL  $1"; FAIL=$((FAIL+1)); }
 check()  { if [ "$1" = "$2" ]; then t_pass "$3"; else t_fail "$3 (expected '$2', got '$1')"; fi; }
+
+# This test exercises the installer, not the build: what it needs is *some* real
+# tarball to serve. Off-tag, `git describe` names a version dist/ has never held
+# (2.1.13-1-gf5ba4eb), the two cp calls below silently copied nothing, and all
+# eleven downstream assertions failed with messages that pointed at the installer
+# rather than at the missing input. So fall back to the nearest tag's artifact
+# when the exact build stamp isn't present.
+if [ "$VERSION_PINNED" = "0" ] && [ ! -f "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" ]; then
+  NEAREST=$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+  if [ -n "$NEAREST" ] && [ -f "$V2/dist/sparx-$NEAREST-$TARGET.tar.gz" ]; then
+    echo "  note  no dist/ artifact for $VERSION; testing with $NEAREST"
+    VERSION="$NEAREST"
+  fi
+fi
+
+# Missing input is not a test failure — say so plainly instead of reporting it as
+# eleven installer defects.
+if [ ! -f "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" ]; then
+  echo "  SKIP  no dist/sparx-$VERSION-$TARGET.tar.gz to serve."
+  echo "        Run ./scripts/build_release.sh first."
+  exit 2
+fi
 
 rm -rf "$ROOT"; mkdir -p "$ROOT/serve/download/v$VERSION" "$ROOT/api"
 

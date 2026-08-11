@@ -9,24 +9,31 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -n "${SPARX_VERSION:-}" ]]; then
   VERSION="$SPARX_VERSION"
 else
-  VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
+  # --abbrev=0 gives the nearest tag with no commit-distance suffix. Plain
+  # `describe` would yield 2.1.13-1-gf5ba4eb one commit after a tag, and writing
+  # that into package.json makes the manifests disagree with every release
+  # artifact. npm accepts it as a prerelease, so nothing complains here — the
+  # damage only shows up as manifest mismatches later.
+  VERSION=$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
   VERSION="${VERSION:-0.0.0-dev}"
 fi
 
 # Refuse anything npm would not accept as a version.
 #
-# `git describe --tags --always` falls back to a bare commit SHA when no tag is
-# reachable — which is exactly what happens in CI, because actions/checkout does
-# not fetch tags unless asked. That silently wrote "7b3ee26" into every
-# package.json and blocked the v2.1.10 release with five confusing "manifest
-# wrong" failures far downstream. Failing here names the actual problem.
+# This guard exists because a bad version here is silent: npm accepts it, the
+# files are written, and the failure surfaces much later as unrelated-looking
+# "manifest wrong" errors. It previously caught `git describe --tags --always`
+# returning a bare commit SHA ("7b3ee26") in CI, where actions/checkout does not
+# fetch tags unless asked — that blocked the v2.1.10 release. The describe call
+# above no longer produces a SHA, so the remaining live case is a malformed
+# SPARX_VERSION passed in from a workflow.
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   echo "sync_npm_version.sh: refusing to write '$VERSION' as an npm version." >&2
   echo "" >&2
   echo "  Expected MAJOR.MINOR.PATCH (optionally -prerelease)." >&2
-  echo "  This usually means SPARX_VERSION was not set and 'git describe'" >&2
-  echo "  returned a commit SHA because no tag was reachable. In CI, either" >&2
-  echo "  set SPARX_VERSION or check out with fetch-depth: 0." >&2
+  echo "  If SPARX_VERSION is set, check the value the workflow passed." >&2
+  echo "  If it is unset, no git tag was reachable — check out with" >&2
+  echo "  fetch-depth: 0 so tags are available." >&2
   exit 1
 fi
 

@@ -81,11 +81,21 @@ BAD
 echo "=== artifact name matches what install.sh requests ==="
 # Use the same extraction method we already validated above (line 30-31).
 HOST_TARGET=$(PATH="$PATH" bash -c "source $WORK/build_fn.sh; detect_target" 2>/dev/null)
+# RELEASE_BUILD distinguishes "this is the version we are shipping" from "this is
+# whatever a dev tree happens to be at". The dist/ completeness check below is
+# only a real failure in the first case.
 if [[ -n "${SPARX_VERSION:-}" ]]; then
   TEST_VERSION="$SPARX_VERSION"
+  RELEASE_BUILD=1
 else
   TEST_VERSION=$(git describe --tags --always 2>/dev/null | sed 's/^v//')
   TEST_VERSION="${TEST_VERSION:-0.0.0-dev}"
+  # Exactly on a tag with no commits after it: this is a release build.
+  if git describe --exact-match --tags HEAD >/dev/null 2>&1; then
+    RELEASE_BUILD=1
+  else
+    RELEASE_BUILD=0
+  fi
 fi
 EXPECT="sparx-$TEST_VERSION-$HOST_TARGET.tar.gz"
 # Look for this version's artifact specifically. Globbing all of dist/ and
@@ -102,9 +112,15 @@ OTHERS=$(ls "$V2/dist"/sparx-*-"$HOST_TARGET".tar.gz 2>/dev/null \
 if [ -n "$OTHERS" ]; then
   echo "  note  other versions in dist/: $(echo "$OTHERS" | tr '\n' ' ')"
 fi
-if [ -z "$ART" ] && [ -n "$OTHERS" ]; then
+if [ -z "$ART" ] && [ -n "$OTHERS" ] && [ "$RELEASE_BUILD" = "1" ]; then
   echo "  FAIL  dist/ has $HOST_TARGET artifacts but none for $TEST_VERSION"
   FAIL=$((FAIL+1))
+elif [ -z "$ART" ] && [ -n "$OTHERS" ]; then
+  # Off-tag dev tree: dist/ holding older artifacts is the normal state, since
+  # nobody rebuilds every target on every commit. Failing here made a clean
+  # checkout look broken unless the caller exported SPARX_VERSION.
+  echo "  PASS  no artifact for dev version $TEST_VERSION (dist/ has releases)"
+  PASS=$((PASS+1))
 elif [ -z "$ART" ]; then
   echo "  PASS  no artifact for $TEST_VERSION in dist/ (CI builds separately)"; PASS=$((PASS+1))
 elif [ -z "$HOST_TARGET" ]; then

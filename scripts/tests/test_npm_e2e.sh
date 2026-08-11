@@ -7,11 +7,27 @@
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 V2="$REPO_ROOT"
+# Two different versions, deliberately.
+#
+# VERSION is the build stamp: what `sparx version` prints and what dist/ tarballs
+# are named. build_release.sh derives it from `git describe --tags --dirty`, so
+# off-tag it carries a commit-distance suffix like 2.1.13-1-gf5ba4eb.
+#
+# MANIFEST_VERSION is what the committed package.json files hold. Those only ever
+# contain plain semver, because sync_npm_version.sh writes a release version into
+# them. Comparing them against the build stamp made every one of the manifest
+# checks below fail on any commit after a tag — a clean tree looked broken, and
+# the suite only went green if the caller happened to export SPARX_VERSION.
+#
+# On a tag with a clean tree the two are equal, which is the case CI releases in.
 if [[ -n "${SPARX_VERSION:-}" ]]; then
   VERSION="$SPARX_VERSION"
+  MANIFEST_VERSION="$SPARX_VERSION"
 else
   VERSION=$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null | sed 's/^v//')
   VERSION="${VERSION:-2.1.0}"
+  MANIFEST_VERSION=$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+  MANIFEST_VERSION="${MANIFEST_VERSION:-$VERSION}"
 fi
 # Detect current platform to match npm platform packages
 detect_target() {
@@ -49,10 +65,22 @@ cp "$V2/packaging/npm/bin/sparx.js" "$ROOT/pkg/bin/"
 PLATDIR="$ROOT/pkg/node_modules/@sparx/cli-$TARGET"
 mkdir -p "$PLATDIR/bin"
 # Use the release-built binary from dist/ (has the correct version stamp).
-# Fall back to the platforms/ tree only for local dev where dist/ doesn't exist.
-if [ -f "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" ]; then
-  tar -xzf "$V2/dist/sparx-$VERSION-$TARGET.tar.gz" -C /tmp "sparx-$VERSION-$TARGET/bin/sparx"
-  cp "/tmp/sparx-$VERSION-$TARGET/bin/sparx" "$PLATDIR/bin/"
+# Try the build stamp first, then the plain tag: off-tag those differ, and dist/
+# is normally populated by a release build at the tag.
+#
+# The platforms/ fallback is last because that path is gitignored and often holds
+# a stale binary from an older build. Preferring it silently produced a version
+# mismatch that looked like a packaging bug.
+DIST_VERSION=""
+for candidate in "$VERSION" "$MANIFEST_VERSION"; do
+  if [ -f "$V2/dist/sparx-$candidate-$TARGET.tar.gz" ]; then
+    DIST_VERSION="$candidate"
+    break
+  fi
+done
+if [ -n "$DIST_VERSION" ]; then
+  tar -xzf "$V2/dist/sparx-$DIST_VERSION-$TARGET.tar.gz" -C /tmp "sparx-$DIST_VERSION-$TARGET/bin/sparx"
+  cp "/tmp/sparx-$DIST_VERSION-$TARGET/bin/sparx" "$PLATDIR/bin/"
 elif [ -f "$V2/packaging/npm/platforms/$TARGET/bin/sparx" ]; then
   cp "$V2/packaging/npm/platforms/$TARGET/bin/sparx" "$PLATDIR/bin/"
 else
@@ -67,7 +95,7 @@ else
   cat > "$PLATDIR/package.json" <<PKGJSON
 {
   "name": "@sparx/cli-$TARGET",
-  "version": "$VERSION",
+  "version": "$MANIFEST_VERSION",
   "os": ["${TARGET%-*}"],
   "cpu": ["${TARGET#*-}"],
   "bin": { "sparx": "bin/sparx" }
@@ -85,7 +113,13 @@ check "$RC" "0" "postinstall exits 0"
 echo "$OUT" | grep -q "sparx ready ($TARGET)" && t_pass "reports ready with triple" || t_fail "no ready message"
 
 echo "=== 2. launcher passes through to the binary ==="
-check "$(node bin/sparx.js version 2>&1 | head -1)" "sparx $VERSION" "sparx version via launcher"
+# Assert the launcher relays what the binary says, rather than what git says the
+# version ought to be. This test is about pass-through: comparing against a
+# git-derived string instead made it fail whenever the available binary was built
+# at a different commit, which is a property of the dev tree, not of the launcher.
+BIN_VERSION="$("$PLATDIR/bin/sparx" version 2>&1 | head -1)"
+check "$(node bin/sparx.js version 2>&1 | head -1)" "$BIN_VERSION" \
+      "launcher relays the binary's own version ($BIN_VERSION)"
 node bin/sparx.js --help >/dev/null 2>&1 && t_pass "--help via launcher" || t_fail "--help via launcher"
 
 echo "=== 3. exit codes propagate ==="
@@ -124,7 +158,7 @@ import json,sys
 p=json.load(open('$f'))
 assert p['os']==['$os'], p['os']
 assert p['cpu']==['$arch'], p['cpu']
-assert p['version']=='$VERSION', p['version']
+assert p['version']=='$MANIFEST_VERSION', p['version']
 assert p['name']=='@sparx/cli-$t', p['name']
 " 2>/dev/null && t_pass "$t manifest os/cpu/version correct" || t_fail "$t manifest wrong"
 done
@@ -134,10 +168,10 @@ python3 -c "
 import json
 p=json.load(open('$V2/packaging/npm/package.json'))
 od=p['optionalDependencies']
-assert p['version']=='$VERSION', p['version']
+assert p['version']=='$MANIFEST_VERSION', p['version']
 assert len(od)==4, od
-for k,v in od.items(): assert v=='$VERSION', (k,v)
-" 2>/dev/null && t_pass "optionalDependencies pinned to $VERSION" || t_fail "optionalDependencies drift"
+for k,v in od.items(): assert v=='$MANIFEST_VERSION', (k,v)
+" 2>/dev/null && t_pass "optionalDependencies pinned to $MANIFEST_VERSION" || t_fail "optionalDependencies drift"
 
 echo
 echo "  $PASS passed, $FAIL failed"

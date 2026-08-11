@@ -3,6 +3,41 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.14] — 2026-08-10
+
+### Fixed
+- **The packaging suite only passed if the caller exported `SPARX_VERSION`.**
+  Five scripts derived their version from `git describe --tags`, which appends a
+  commit-distance suffix (`2.1.13-1-gf5ba4eb`) on any commit after a tag. Three of
+  them then compared that against something that only ever holds a plain release
+  version, so a clean checkout reported 12 failures: manifest version mismatches,
+  a missing `dist/` artifact, and — worst — eleven *installer* failures that were
+  really one missing input file copied silently by a `cp` whose failure nobody
+  checked.
+
+  The underlying mistake was treating one version as two different things. A
+  build stamp (`sparx version`, `dist/` tarball names) legitimately carries commit
+  distance; a committed `package.json` never does. `test_npm_e2e.sh` now keeps
+  both as separate variables and compares each against the right thing.
+
+  Also: `sync_npm_version.sh` uses `--abbrev=0` so it can no longer write a
+  suffixed version into a manifest; `test_triple_contract.sh` only enforces
+  `dist/` completeness for actual release builds (pinned version, or HEAD exactly
+  on a tag), since a dev tree with older artifacts is normal; and
+  `test_install_e2e.sh` skips with an actionable message when it has no tarball to
+  serve, instead of reporting the absence as eleven installer defects.
+
+  One assertion was also testing the wrong property: the npm launcher check
+  compared `sparx version` against a git-derived string, so it failed whenever the
+  available binary came from a different commit. It now asserts the launcher
+  relays *the binary's own* output, which is what pass-through means. Verified
+  against three mutants — drifted manifest, drifted `optionalDependencies`, and a
+  launcher that fabricates its version instead of relaying — all caught.
+
+  Packaging suite on a clean tree, no environment variables: **82 passed / 12
+  failed → 94 passed / 0 failed.** The previous 94/0 in the 2.1.12 notes was
+  measured with `SPARX_VERSION` exported, so it overstated the result.
+
 ## [2.1.12] — 2026-08-10
 
 ### Fixed
@@ -25,6 +60,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   previously described in this project's own notes as "pre-existing version drift
   from the unrun release workflow" — that was circular and wrong. The release did
   not fail to run; it ran and failed, and this was why.
+
 ## [2.1.11] — 2026-08-10
 
 ### Changed
