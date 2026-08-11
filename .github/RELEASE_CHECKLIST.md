@@ -81,26 +81,24 @@ ctest --test-dir /tmp/ma_build --output-on-failure
 ./scripts/tests/run_all.sh
 
 # Verify licence gate passes
-./scripts/check_proprietary_files.sh
+./scripts/check_license.sh
 ```
 
-All checks must pass before proceeding.
+All checks must pass before proceeding. The release build derives the version
+from the tag (or accepts `SPARX_VERSION` explicitly); do not hand-edit a source
+version constant.
 
-### Step 2: Version Bump
+### Step 2: Prepare the Release Commit
 
-Edit the following files to update version to `X.Y.Z`:
-
-- `cli/src/sparx_main.cpp` — `printVersion()` function
-- `packaging/npm/package.json` — `version` field
-- `packaging/homebrew/sparx.rb` — `version` line
-
-Then sync checksums:
+Update `CHANGELOG.md` with the release notes, then commit all intended changes:
 
 ```bash
-./scripts/sync_release_metadata.sh
-git add -A
-git commit -m "chore: bump version to X.Y.Z"
+git add CHANGELOG.md
+git commit -m "release: vX.Y.Z"
 ```
+
+Keep the worktree clean before tagging. The repository policy is to create a
+new patch tag; never delete or recreate an existing tag.
 
 ### Step 3: Tag and Push
 
@@ -109,21 +107,20 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main --tags
 ```
 
-### Step 4: Trigger GitHub Actions Release Workflow
+Pushing a new `vX.Y.Z` tag triggers `.github/workflows/release.yml`.
 
-1. Go to **Actions → Release** in the GitHub UI
-2. Click **Run workflow**
-3. Select branch: `main`
-4. Enter version: `X.Y.Z`
-5. Click **Run workflow**
+### Step 4: Verify the GitHub Actions Release Workflow
 
-The workflow will:
-- ✅ Run licence gate (fails if any Qualcomm files detected)
-- ✅ Run C++ tests (15 tests) + packaging tests (19 tests)
+The current workflow will:
+- ✅ Run the Qualcomm licence gate (`scripts/check_license.sh`)
+- ✅ Run the C++ suite and packaging suite on Linux and macOS
 - ✅ Build 4 platform artifacts (darwin-arm64, darwin-x64, linux-x64, linux-arm64)
-- ✅ Create GitHub Release with artifacts
-- ✅ Update Homebrew formula with checksums
-- ✅ Publish npm packages
+- ✅ Create a GitHub Release with artifacts and combined checksums
+
+The current workflow does **not** publish npm packages or update a Homebrew
+tap. Those channels require a separate, explicitly configured distribution
+workflow. `scripts/update_packaging.sh` can prepare local formula/manifests
+from a complete set of artifacts; review its diff before committing anything.
 
 ### Step 5: Verify Installation Channels
 
@@ -165,30 +162,16 @@ Post release notes with:
 
 ---
 
-## Rollback
+## Recovery from a Bad Release
 
-If a release has critical issues:
+If a published release has a critical issue, do **not** delete or recreate its
+git tag. Publish a new patch version with the fix (for example, `v2.1.9`),
+clearly mark the affected release as superseded, and update the changelog.
+If the GitHub Release itself must be hidden, archive or edit its notes while
+preserving the immutable tag history.
 
-1. Delete the GitHub release + tag
-   ```bash
-   gh release delete vX.Y.Z --yes
-   git tag -d vX.Y.Z
-   git push origin :refs/tags/vX.Y.Z
-   ```
-
-2. Unpublish npm package (within 72h of publish)
-   ```bash
-   npm unpublish @sparx/cli@X.Y.Z
-   ```
-
-3. Revert Homebrew formula commit
-   ```bash
-   cd homebrew-tap
-   git revert <commit-sha>
-   git push origin main
-   ```
-
----
+For npm or Homebrew, follow the registry/tap's documented deprecation or
+reversion process. Do not unpublish or force-push as an automated rollback.
 
 ## Troubleshooting
 
@@ -224,13 +207,16 @@ npm token create --read-only=false
 
 ### Homebrew formula SHA256 mismatch
 
-The tarball changed after `sync_release_metadata.sh` ran. Re-run:
+The formula must reference the exact artifact checksum. After all four
+artifacts are available in `dist/`, regenerate packaging metadata with:
+
 ```bash
-./scripts/sync_release_metadata.sh
-git add packaging/homebrew/sparx.rb
-git commit --amend --no-edit
-git push --force-with-lease
+./scripts/update_packaging.sh X.Y.Z
+git diff -- packaging/homebrew packaging/npm
 ```
+
+Review the generated diff and make a new corrective commit if needed. Never
+amend a published release commit or force-push a release branch.
 
 ---
 
