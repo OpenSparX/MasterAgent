@@ -13,27 +13,27 @@
 class Sparx < Formula
   desc "On-device Agent framework for Qualcomm and ARM platforms"
   homepage "https://github.com/OpenSparX/MasterAgent"
-  version "2.1.9"
+  version "2.1.10"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.9/sparx-2.1.9-darwin-arm64.tar.gz"
-      sha256 "ff74559820777849bfcf6c208039cc119672ddda7da74879b670f7682f50f772"
+      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.10/sparx-2.1.10-darwin-arm64.tar.gz"
+      sha256 "dda842165cb2322284f24b9f6e16c5cd4224883578fe4e6b19157ff8a1496733"
     end
     on_intel do
-      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.9/sparx-2.1.9-darwin-x64.tar.gz"
+      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.10/sparx-2.1.10-darwin-x64.tar.gz"
       sha256 "REPLACE_DARWIN_X64_SHA256"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.9/sparx-2.1.9-linux-arm64.tar.gz"
+      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.10/sparx-2.1.10-linux-arm64.tar.gz"
       sha256 "REPLACE_LINUX_ARM64_SHA256"
     end
     on_intel do
-      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.9/sparx-2.1.9-linux-x64.tar.gz"
+      url "https://github.com/OpenSparX/MasterAgent/releases/download/v2.1.10/sparx-2.1.10-linux-x64.tar.gz"
       sha256 "REPLACE_LINUX_X64_SHA256"
     end
   end

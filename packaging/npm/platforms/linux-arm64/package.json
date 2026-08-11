@@ -7,14 +7,8 @@
     "type": "git",
     "url": "git+https://github.com/OpenSparX/MasterAgent.git"
   },
-  "os": [
-    "linux"
-  ],
-  "cpu": [
-    "arm64"
-  ],
-  "files": [
-    "bin/sparx"
-  ],
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin/sparx"],
   "preferUnplugged": true
 }
