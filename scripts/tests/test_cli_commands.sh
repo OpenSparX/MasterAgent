@@ -198,6 +198,49 @@ for ex in "$V2"/examples/*/; do
   fi
 done
 
+echo "=== 14. sparx plan validates and exports ==="
+PLAN_FILE="$V2/examples/automotive_assistant/plans/turn-off-ac.yaml"
+if [ -f "$PLAN_FILE" ]; then
+  "$SPARX" plan validate "$PLAN_FILE" >/dev/null 2>&1
+  check "$?" "0" "plan validate exits 0 for valid plan"
+
+  OUT_PLAN=$("$SPARX" plan show "$PLAN_FILE" 2>&1)
+  echo "$OUT_PLAN" | grep -q "✓ valid" && t_pass "plan show marks valid" \
+    || t_fail "plan show missing valid marker"
+  echo "$OUT_PLAN" | grep -q "read_temp" && t_pass "plan show lists nodes" \
+    || t_fail "plan show missing node"
+
+  OUT_MERMAID=$("$SPARX" plan export "$PLAN_FILE" --format=mermaid 2>&1)
+  echo "$OUT_MERMAID" | grep -q "flowchart TD" && t_pass "mermaid export" \
+    || t_fail "mermaid export broken"
+
+  OUT_JSON=$("$SPARX" plan export "$PLAN_FILE" --format=json 2>&1)
+  echo "$OUT_JSON" | grep -q '"schema_version"' && t_pass "json export" \
+    || t_fail "json export broken"
+
+  # Invalid plan (P0 without authorization) must be rejected.
+  TMP_P0="/tmp/sparx_test_invalid_p0.yaml"
+  cat > "$TMP_P0" <<'YML'
+plan: test-invalid-p0
+priority: p0
+deadline_ms: 1000
+nodes:
+  - id: brake
+    action: vehicle.safety.brake
+YML
+  "$SPARX" plan validate "$TMP_P0" >/dev/null 2>&1
+  check "$?" "1" "plan validate rejects P0 without authorization"
+  rm -f "$TMP_P0"
+else
+  echo "  SKIP  plan spec not found: $PLAN_FILE"
+fi
+
+echo "=== 15. sparx plan --help ==="
+"$SPARX" plan --help >/dev/null 2>&1 && t_pass "plan --help exits 0" \
+  || t_fail "plan --help failed"
+"$SPARX" plan >/dev/null 2>&1 && t_pass "plan with no args exits 0 (shows help)" \
+  || t_fail "plan with no args should show help"
+
 echo
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
