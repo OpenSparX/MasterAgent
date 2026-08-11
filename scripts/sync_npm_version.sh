@@ -13,6 +13,23 @@ else
   VERSION="${VERSION:-0.0.0-dev}"
 fi
 
+# Refuse anything npm would not accept as a version.
+#
+# `git describe --tags --always` falls back to a bare commit SHA when no tag is
+# reachable — which is exactly what happens in CI, because actions/checkout does
+# not fetch tags unless asked. That silently wrote "7b3ee26" into every
+# package.json and blocked the v2.1.10 release with five confusing "manifest
+# wrong" failures far downstream. Failing here names the actual problem.
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  echo "sync_npm_version.sh: refusing to write '$VERSION' as an npm version." >&2
+  echo "" >&2
+  echo "  Expected MAJOR.MINOR.PATCH (optionally -prerelease)." >&2
+  echo "  This usually means SPARX_VERSION was not set and 'git describe'" >&2
+  echo "  returned a commit SHA because no tag was reachable. In CI, either" >&2
+  echo "  set SPARX_VERSION or check out with fetch-depth: 0." >&2
+  exit 1
+fi
+
 echo "Syncing npm package versions to $VERSION"
 
 # Root package

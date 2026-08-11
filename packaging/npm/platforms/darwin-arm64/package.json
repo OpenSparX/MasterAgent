@@ -1,14 +1,20 @@
 {
   "name": "@sparx/cli-darwin-arm64",
-  "version": "2.1.10",
+  "version": "2.1.11",
   "description": "sparx binary for darwin-arm64",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OpenSparX/MasterAgent.git"
   },
-  "os": ["darwin"],
-  "cpu": ["arm64"],
-  "files": ["bin/sparx"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/sparx"
+  ],
   "preferUnplugged": true
 }

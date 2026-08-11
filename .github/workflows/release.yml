@@ -57,7 +57,15 @@ jobs:
         run: cmake --build build --parallel
       - name: C++ tests
         run: ctest --test-dir build --output-on-failure
+      # SPARX_VERSION is mandatory here, not optional. Without it the script
+      # falls back to `git describe --tags --always`, and actions/checkout does
+      # not fetch tags — so describe returns a bare commit SHA and every
+      # package.json gets a version like "7b3ee26". The packaging tests then
+      # fail comparing that against the real version, which is what blocked the
+      # v2.1.10 release.
       - name: Sync npm package versions to tag
+        env:
+          SPARX_VERSION: ${{ steps.ver.outputs.version }}
         run: ./scripts/sync_npm_version.sh
       - name: Build release artifact
         env:
