@@ -3,6 +3,20 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.9] — 2026-08-10
+
+### Fixed
+- Distribution channel URLs were inconsistent: npm platform packages pointed at
+  `openschbrid/sparx` while install.sh, README, and the Homebrew formula used
+  `OpenSparX/MasterAgent`. All channels now agree.
+- Homebrew formula header named a non-existent `homebrew-sparx` tap and used the
+  wrong-case install path; corrected to `OpenSparX/masteragent/sparx`.
+
+### Changed
+- RELEASE_CHECKLIST.md now matches what `release.yml` actually does (GitHub
+  Release only — npm and Homebrew publishing are manual), references the scripts
+  that exist, and its recovery section follows the never-delete-tags policy.
+
 ## [2.1.8] — 2026-08-11
 
 ### Added

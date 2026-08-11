@@ -17,13 +17,17 @@ echo "Syncing npm package versions to $VERSION"
 
 # Root package
 ROOT_PKG="$REPO_ROOT/packaging/npm/package.json"
+# The trailing newline matters: update_packaging.sh writes one, so omitting it
+# here makes the two scripts alternately dirty the same files.
 python3 -c "
 import json, sys
 p = json.load(open('$ROOT_PKG'))
 p['version'] = '$VERSION'
 for k in list(p.get('optionalDependencies', {}).keys()):
     p['optionalDependencies'][k] = '$VERSION'
-json.dump(p, open('$ROOT_PKG', 'w'), indent=2)
+with open('$ROOT_PKG', 'w') as f:
+    json.dump(p, f, indent=2)
+    f.write('\n')
 print('  ✓ ' + '$ROOT_PKG')
 "
 
@@ -35,7 +39,9 @@ for dir in "$REPO_ROOT"/packaging/npm/platforms/*/; do
 import json
 p = json.load(open('$pkg'))
 p['version'] = '$VERSION'
-json.dump(p, open('$pkg', 'w'), indent=2)
+with open('$pkg', 'w') as f:
+    json.dump(p, f, indent=2)
+    f.write('\n')
 print('  ✓ ' + '$pkg')
 "
 done

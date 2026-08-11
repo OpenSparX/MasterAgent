@@ -1,6 +1,6 @@
 {
   "name": "@sparx/cli-darwin-x64",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "sparx binary for darwin-x64",
   "license": "Apache-2.0",
   "repository": {
