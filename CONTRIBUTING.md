@@ -206,7 +206,10 @@ bool executeTask(const std::string& task_id);
 ctest --test-dir build --output-on-failure
 
 # Specific test
-ctest --test-dir build -R preprocessing_test
+ctest --test-dir build -R test_preprocess
+
+# List every test target
+ctest --test-dir build -N
 
 # With verbose output
 ctest --test-dir build --verbose
@@ -214,29 +217,57 @@ ctest --test-dir build --verbose
 
 ### Writing Tests
 
-We use Google Test. Each module has a corresponding test file:
+There is no Google Test dependency. Tests are plain executables that use the
+`expect()` helper from `tests/test_support.h`, which throws on failure; `main()`
+catches and returns non-zero. This keeps the test tree buildable with nothing but
+a compiler and CMake, which matters because the kernel is meant to be embeddable
+on targets where fetching a test framework is not an option.
 
 ```cpp
-// tests/orchestrator_test.cpp
-#include <gtest/gtest.h>
-#include "orchestrator/task_orchestrator.h"
+// tests/test_orchestrator_controls.cpp
+#include <iostream>
+#include "master_agent/orchestrator/orchestrator.h"
+#include "test_support.h"
 
-namespace sparx {
-namespace test {
+using master_agent::test_support::expect;
 
-TEST(OrchestratorTest, ExecuteSimpleTask) {
-    TaskOrchestrator orch;
-    ASSERT_TRUE(orch.executeTask("task_1"));
+namespace {
+
+void testRejectsEmptyDagId() {
+    // ... build a DAG with no dag_id ...
+    const auto result = orchestrator.validateDAG(dag, admission, call);
+    expect(!result.valid, "a DAG with no dag_id must be rejected");
+    expect(result.reject_code == "ORCHESTRATOR_DAG_INVALID",
+           "rejection names the reason, got: " + result.reject_code);
 }
 
-TEST(OrchestratorTest, RejectEmptyTaskId) {
-    TaskOrchestrator orch;
-    ASSERT_FALSE(orch.executeTask(""));
-}
+}  // namespace
 
-}  // namespace test
-}  // namespace sparx
+int main() {
+    try {
+        testRejectsEmptyDagId();
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << "orchestrator control tests failed: "
+                  << error.what() << '\n';
+        return 1;
+    }
+}
 ```
+
+Register the target in `tests/CMakeLists.txt`:
+
+```cmake
+add_master_agent_test(test_my_feature test_my_feature.cpp)
+```
+
+**Write the failure message, not just the assertion.** `expect()` reports only the
+string you give it, so include the value that was wrong — `"got: " +
+result.reject_code` turns a red test into a diagnosis.
+
+**Verify the test can fail.** An assertion that passes against broken code is
+worse than no assertion, because it certifies the bug. Before trusting a new
+test, break the thing it covers and confirm the test goes red.
 
 **Test Requirements:**
 - Every new feature must include tests

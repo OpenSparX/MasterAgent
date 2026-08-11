@@ -10,6 +10,7 @@
 namespace sparx {
 
 int cmd_init(const std::vector<std::string>& args);
+int cmd_add(const std::vector<std::string>& args);
 int cmd_run(const std::vector<std::string>& args);
 int cmd_pull(const std::vector<std::string>& args);
 int cmd_devices(const std::vector<std::string>& args);

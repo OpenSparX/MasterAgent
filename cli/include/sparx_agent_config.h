@@ -15,6 +15,14 @@ struct AgentConfig {
     std::string name;
     std::string version;
     std::string model_id;
+    /// Filesystem path to a GGUF weight file. Empty means no local model is
+    /// configured, which is what makes `sparx run` fall back to simulation:
+    /// there is no default path to guess, because guessing wrong would look
+    /// like a broken model rather than a missing one.
+    std::string model_path;
+    /// host:port of a llama-server to attach to. A server already listening
+    /// here is used as-is instead of spawning a child.
+    std::string endpoint = "127.0.0.1:8080";
     int context_length = 4096;
     int max_output_tokens = 512;
     std::vector<std::string> skills;
@@ -80,6 +88,18 @@ inline bool loadAgentConfig(const std::string& path, AgentConfig& config) {
         if (in_model) {
             if (line.find("  id:") != std::string::npos) {
                 config.model_id = line.substr(line.find(':') + 2);
+            } else if (line.find("  path:") != std::string::npos) {
+                auto val = line.substr(line.find(':') + 2);
+                if (val.size() >= 2 && val.front() == '"') {
+                    val = val.substr(1, val.size() - 2);
+                }
+                config.model_path = val;
+            } else if (line.find("  endpoint:") != std::string::npos) {
+                auto val = line.substr(line.find(':') + 2);
+                if (val.size() >= 2 && val.front() == '"') {
+                    val = val.substr(1, val.size() - 2);
+                }
+                config.endpoint = val;
             } else if (line.find("  context_length:") != std::string::npos) {
                 config.context_length = std::stoi(line.substr(line.find(':') + 2));
             } else if (line.find("  max_output_tokens:") != std::string::npos) {

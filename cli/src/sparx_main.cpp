@@ -2,7 +2,7 @@
  * @file sparx_main.cpp
  * @brief Entry point for the `sparx` CLI.
  *
- * Subcommands: init, run, devices, deploy, doctor, demo, shell.
+ * Subcommands: init, add, pull, run, devices, deploy, doctor, demo, shell.
  * This is the developer-facing surface of OpenSparX — every UX decision here
  * matters more than any internal architectural choice.
  */
@@ -27,6 +27,7 @@ static void printUsage() {
 
   Commands:
     init <name>       Create a new agent project
+    add skill <name>  Scaffold a new skill and register it in agent.yaml
     pull <model>      Download model artifacts (GGUF / context binary)
     run               Run the agent locally (CPU/GPU)
     devices           List connected devices and their NPU capabilities
@@ -41,6 +42,7 @@ static void printUsage() {
 
   Examples:
     sparx init my-agent
+    sparx add skill climate_control
     sparx demo automotive              # 30-second killer demo
     sparx run
     sparx deploy --device 1
@@ -95,6 +97,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (cmd == "init") return sparx::cmd_init(args);
+    if (cmd == "add") return sparx::cmd_add(args);
     if (cmd == "pull") return sparx::cmd_pull(args);
     if (cmd == "run") return sparx::cmd_run(args);
     if (cmd == "devices") return sparx::cmd_devices(args);

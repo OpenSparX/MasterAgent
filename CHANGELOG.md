@@ -3,6 +3,110 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.11] — 2026-08-10
+
+### Changed
+- `sparx run` now prints its actual compile-time version (`SPARX_VERSION`) in
+  the banner instead of a hardcoded `v0.1.0`.
+- When no GGUF model is resolved, `sparx run` prints `reality=SIMULATED ·
+  runtime=none` with a clear note on how to configure a model. Previously it
+  printed `reality=SIMULATED · runtime=mock` and returned a canned Chinese
+  string that looked like real inference output.
+- `--resume` no longer prints `✓ recovered from WAL (torn tail repaired)`. WAL
+  recovery is implemented in the kernel orchestrator but not yet wired into the
+  CLI — the old message was a false positive.
+- When a model IS configured (`--model`, `model.path` in agent.yaml, or the
+  `SPARX_MODEL` env var), `sparx run` constructs a `LlamaCppModelRuntime` and
+  streams real tokens. Banner reads `reality=REAL · runtime=llama-cpp` and the
+  REPL prints actual TTFT, total latency, token count, and stream-integrity
+  status rather than placeholders.
+
+### Added
+- `AgentConfig` now parses `model.path` and `model.endpoint` from agent.yaml.
+- Model path resolution precedence: `--model` flag > `model.path` > `$SPARX_MODEL`.
+- **`sparx add skill <name>`** — scaffolds `skills/<name>.yaml` and registers the
+  name in `agent.yaml`. The registration half is what developers forget by hand,
+  and an unregistered skill is silently inert. Refuses to overwrite an existing
+  skill, rejects path traversal and unsafe names, and preserves comments and
+  ordering in `agent.yaml` (line-wise rewrite rather than YAML round-trip).
+- **Skill YAML loading** (`sparx_skill_loader.h`). Deterministic matching
+  previously hardcoded a check for the string `"hello"`, so every `skills/*.yaml`
+  file on disk — including the ones shipped in `examples/` — was ignored. Editing
+  a skill's patterns had no effect and produced no error. `sparx run` now loads
+  each registered skill, matches patterns case-insensitively for ASCII, and
+  reports `skills: N/M loaded` at startup, naming any registered skill with no
+  YAML file.
+- Skill handlers support `handler.response` and `handler.response_template`,
+  including `|` literal block scalars. Because parameter extraction is not
+  implemented, unfilled `{placeholder}` tokens are listed explicitly rather than
+  printed at the user as if they were text.
+- `docs/architecture.md` — bilingual architecture reference with Mermaid diagrams
+  for system layers, request flow, the inference seal/digest trust model, WAL
+  terminal states, runtime topology, and MCP invocation.
+- **`DagBuilder`** (`cli/include/sparx_dag_builder.h`) — fluent builder for small
+  multi-step plans. Hand-constructing a 2-node `IntentDAG` took ~25 lines of
+  boilerplate, and `validateDAG` rejects an incomplete plan with a reject code but
+  no indication of which field was missing. `build()` returns the `IntentDAG` and
+  a matching `AdmissionContext` together, because the two must agree: every node
+  action has to appear in `allowed_capabilities`, and a node with
+  `max_attempts > 1` needs a retry policy keyed by its action.
+
+      auto [dag, admission] = DagBuilder("turn-off-ac")
+          .node("read_temp", "vehicle.climate.getTemperature")
+          .node("set_ac", "vehicle.climate.setPower", {{"power", "off"}})
+              .after("read_temp")
+          .build();
+
+  Nodes with no `.after()` have no incoming edge and start together — parallelism
+  is the default, sequencing is what you opt into. `retries()` requires an explicit
+  idempotency policy and a non-empty retryable-error set; there is no default,
+  because choosing one would assert a safety property the builder cannot know.
+  P0 priority additionally requires `p0Authorization()` with a real
+  `trusted-safety:` reference — the builder will not mint its own, since a builder
+  that could would make the orchestrator's P0 check unenforceable for every local
+  caller. `priority(P0)` alone is therefore rejected, and a test asserts that.
+- **Plan export** — `dagToJson()`, `dagToMermaid()`, and `dagToText()`. Empty
+  `params` and `dependencies` are omitted from JSON rather than emitted as `{}`,
+  so the output does not imply configuration that is not there. Mermaid output is
+  pasteable into docs and annotates an edgeless multi-node plan as parallel
+  instead of rendering unexplained orphan boxes. Text output marks roots (`●`) and
+  dependents (`○`), and labels multi-dependency nodes as joins.
+
+### Fixed
+- `examples/automotive_assistant/agent.yaml` registered 5 skills but shipped only
+  3 YAML files; `phone` and `vehicle_status` were silently inert. Both added.
+  A test now fails if any shipped example registers a skill with no file.
+- `test_cli_commands.sh`: 13 → 36 assertions, covering `add skill` scaffolding and
+  registration, name validation and path traversal, the edited-skill-fires loop,
+  banner/version agreement, the absence of the false WAL claim, and skill
+  completeness across all shipped examples. Verified against four mutants
+  (hardcoded banner, restored WAL claim, disabled loader, skipped registration) —
+  each is caught.
+- `tests/test_sparx_dag_builder.cpp` — 11 cases, 52 assertions, every plan shape
+  validated through a real `Orchestrator` rather than a mock, so the builder's
+  contract is defined by the validator and not by its own source. Verified against
+  four mutants (dropped retry policy, self-granted P0 authorization, unpropagated
+  node deadlines, placeholder capabilities) — each is caught. ctest 15 → 16 targets,
+  all passing.
+- `DagBuilder::after({"a", "b"})` — the documented braced-list form did not compile:
+  a two-element list of `const char*` is ambiguous between the `vector` overload and
+  `std::string`'s `(InputIt, InputIt)` constructor. Added an `initializer_list`
+  overload, which both prefer.
+- **CI now runs on pull requests.** `CONTRIBUTING.md` told contributors "Automated
+  checks: CI must pass (build, tests, licence gate)", but the only workflow was
+  `release.yml`, which triggers on tag push and `workflow_dispatch`. Nothing ran on
+  a PR — including the licence gate, the one check whose failure is a legal problem
+  rather than a bug. Added `.github/workflows/ci.yml`: licence gate, then build +
+  ctest + CLI and licence integration tests on ubuntu-latest and macos-latest.
+  Packaging tests are deliberately excluded, because 18 of their assertions require
+  a published release artifact and would leave CI permanently red — a red CI that
+  is normal to ignore is worse than none.
+- `CONTRIBUTING.md` documented a Google Test dependency that does not exist. There
+  is no gtest anywhere in the tree; tests are plain executables using `expect()`
+  from `tests/test_support.h`, which throws. The example test, the registration
+  step, and the named test target (`preprocessing_test`, which does not exist —
+  it is `test_preprocess`) are all corrected.
+
 ## [2.1.10] — 2026-08-10
 
 ### Fixed

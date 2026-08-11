@@ -56,4 +56,15 @@ if(MASTER_AGENT_BUILD_CLI)
     add_test(NAME test_sparx_runtimes COMMAND test_sparx_runtimes)
     set_tests_properties(test_sparx_runtimes PROPERTIES
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+    add_executable(test_sparx_dag_builder test_sparx_dag_builder.cpp)
+    target_link_libraries(test_sparx_dag_builder PRIVATE
+        MasterAgent::Core
+        MasterAgent::SparxRuntimes)
+    target_include_directories(test_sparx_dag_builder PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        "${CMAKE_SOURCE_DIR}/cli/include")
+    add_test(NAME test_sparx_dag_builder COMMAND test_sparx_dag_builder)
+    set_tests_properties(test_sparx_dag_builder PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif()

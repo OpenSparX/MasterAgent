@@ -1,0 +1,36 @@
+name: phone
+description: "Place calls, answer, and hang up over the vehicle's Bluetooth link"
+trigger:
+  patterns:
+    - "打电话"
+    - "拨打"
+    - "接电话"
+    - "挂断"
+    - "通话"
+    - "call"
+    - "dial"
+    - "answer"
+    - "hang up"
+    - "phone"
+  intent: phone
+
+parameters:
+  action:
+    type: enum
+    values: [dial, answer, hangup]
+    extract_from: ["打电话", "拨打", "接电话", "挂断", "call", "dial", "answer", "hang up"]
+  contact:
+    type: string
+    extract_from: ["给", "to", "call"]
+
+handler:
+  type: deterministic
+  service: vehicle.phone
+  actions:
+    - field: action
+      mcp_call: "vehicle.phone.setState"
+    - field: contact
+      mcp_call: "vehicle.phone.resolveContact"
+  response_template: |
+    好的，正在{action_zh}{contact_info}。
+    OK, {action_en}{contact_en}.

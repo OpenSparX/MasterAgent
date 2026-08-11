@@ -1,0 +1,37 @@
+name: vehicle_status
+description: "Report fuel/charge level, tyre pressure, mileage, and warnings"
+trigger:
+  patterns:
+    - "剩余油量"
+    - "油量"
+    - "电量"
+    - "续航"
+    - "胎压"
+    - "里程"
+    - "车况"
+    - "保养"
+    - "fuel"
+    - "battery"
+    - "range"
+    - "tyre pressure"
+    - "tire pressure"
+    - "mileage"
+    - "vehicle status"
+  intent: vehicle_status
+
+parameters:
+  metric:
+    type: enum
+    values: [fuel, charge, range, tyre_pressure, mileage, service]
+    extract_from: ["油量", "电量", "续航", "胎压", "里程", "保养",
+                   "fuel", "battery", "range", "tyre", "tire", "mileage", "service"]
+
+handler:
+  type: deterministic
+  service: vehicle.status
+  actions:
+    - field: metric
+      mcp_call: "vehicle.status.read"
+  response_template: |
+    当前{metric_zh}：{value}{unit}。
+    Current {metric_en}: {value}{unit}.

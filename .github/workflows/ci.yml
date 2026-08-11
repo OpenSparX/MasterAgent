@@ -1,0 +1,61 @@
+name: ci
+
+# Runs on every push to main and every pull request. This is the "automated
+# checks" promise in CONTRIBUTING.md: build, test, and licence gate before a
+# human reviewer ever looks at the code. Failing here is faster and cheaper
+# than failing in release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Legal gate first. A PR that adds a Qualcomm-headered file to the OSS tree is
+  # rejected before the build even starts. See scripts/check_license.sh for the
+  # header patterns it scans for — do not quote them here, because the scanner
+  # greps the whole tree and would flag this file.
+  licence-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for Qualcomm-proprietary files
+        run: ./scripts/check_license.sh
+
+  build-and-test:
+    needs: [licence-gate]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git describe needs history for version detection
+
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DMASTER_AGENT_BUILD_CLI=ON -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: C++ tests (ctest)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: CLI integration tests
+        run: bash scripts/tests/test_cli_commands.sh
+
+      - name: Licence test
+        run: bash scripts/tests/test_licence_gate.sh

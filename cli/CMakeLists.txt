@@ -8,6 +8,7 @@
 set(SPARX_SOURCES
     src/sparx_main.cpp
     src/cmd_init.cpp
+    src/cmd_add.cpp
     src/cmd_pull.cpp
     src/cmd_run.cpp
     src/cmd_devices.cpp
