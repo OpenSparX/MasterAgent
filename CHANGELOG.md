@@ -3,6 +3,12 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- `sparx version` now shows real git-derived version in local builds (was `0.0.0-dev`)
+- CHANGELOG.md
+
 ## [2.1.7] — 2026-08-11
 
 ### Added
