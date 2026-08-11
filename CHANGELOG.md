@@ -3,6 +3,22 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.10] — 2026-08-10
+
+### Fixed
+- `update_packaging.sh`: BSD sed basic-regex has no `\|` alternation, so the
+  pattern that rewrites tarball filenames in the Homebrew formula silently
+  matched nothing on macOS — leaving old version strings in the filename while
+  the download path said the new version. Every `brew install` would 404.
+- `test_triple_contract.sh`: used `head -1` of all artifacts, so a leftover
+  tarball from a previous release would sort first and fail the assertion even
+  when the current build was correct. Now checks for this version's artifact
+  specifically and fails only when dist/ holds *other* versions with none for
+  the current.
+- Compiled binary (`bin/sparx`) was tracked in git under
+  `packaging/npm/platforms/darwin-arm64/`; untracked and gitignored (written by
+  `update_packaging.sh` at publish time, not source code).
+
 ## [2.1.9] — 2026-08-10
 
 ### Fixed

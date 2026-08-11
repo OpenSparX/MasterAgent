@@ -1,14 +1,20 @@
 {
   "name": "@sparx/cli-linux-arm64",
-  "version": "2.1.9",
+  "version": "2.1.10",
   "description": "sparx binary for linux-arm64",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OpenSparX/MasterAgent.git"
   },
-  "os": ["linux"],
-  "cpu": ["arm64"],
-  "files": ["bin/sparx"],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/sparx"
+  ],
   "preferUnplugged": true
 }
