@@ -105,7 +105,7 @@ for t in "${TARGETS[@]}"; do
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/openschbrid/sparx.git"
+    "url": "git+https://github.com/OpenSparX/MasterAgent.git"
   },
   "os": ["$os"],
   "cpu": ["$arch"],

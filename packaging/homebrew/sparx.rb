@@ -1,7 +1,7 @@
 # Homebrew formula for sparx.
 #
-# Lives in a tap (homebrew-sparx repo) as Formula/sparx.rb:
-#   brew install OpenSparX/MasterAgent/sparx
+# Lives in a tap (homebrew-masteragent repo) as Formula/sparx.rb:
+#   brew install OpenSparX/masteragent/sparx
 #
 # Binary-only formula rather than build-from-source. Rationale: a source build
 # needs CMake plus the full kernel tree, which turns a 44 KB download into a
