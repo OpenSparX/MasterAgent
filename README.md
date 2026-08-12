@@ -1,6 +1,11 @@
 <div align="center">
+<p align="center">
+  <img src="docs/images/OAK.png" alt="Sparx Architecture" width="100%" />
+</p>
+# ⚡ OpenSparX DeviceOS
 
-# ⚡ OpenSparX AgentOS
+Open Agent Kernel / 开放智能体内核（OAK）
+开源开放的端侧智能体内核，让每家企业都能拥有自己的 Agent OS
 
 **Build AI agents that run 100% on-device.**
 **构建 100% 本地运行的 AI Agent。**
