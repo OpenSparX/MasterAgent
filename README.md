@@ -88,7 +88,7 @@ sparx plan show examples/automotive_assistant/plans/turn-off-ac.yaml
 ## 🏗️ Architecture
 
 <p align="center">
-  <img src="docs/assets/sparx-architecture.png" alt="Sparx Architecture" width="100%" />
+  <img src="docs/images/sparx-architecture.png" alt="Sparx Architecture" width="100%" />
 </p>
 
 Every request flows through a **deterministic-first pipeline** — most requests never touch an LLM:
