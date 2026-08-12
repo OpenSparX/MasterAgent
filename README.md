@@ -24,6 +24,9 @@ OAK 是面向终端设备的**开源智能体操作系统内核**，为 AI Agent
 
 OAK 之于 Agent OS，如同 Linux 内核之于安卓 / Ubuntu。我们不做完整操作系统，我们提供开源开放的内核层，车企、手机厂商、机器人公司基于 OAK 自研专属 Agent OS。
 
+<p align="center">
+  <img src="docs/images/jiagou.png" alt="Sparx Architecture" width="100%" />
+</p>
 
 
 
@@ -33,11 +36,7 @@ OAK 之于 Agent OS，如同 Linux 内核之于安卓 / Ubuntu。我们不做完
   <img src="https://github.com/OpenSparX/MasterAgent/workflows/CI/badge.svg" alt="Build" />
 </p>
 
-```bash
-# Install and run in 60 seconds — no special hardware required
-# 60 秒安装运行 — 无需特殊硬件
-npm install -g @sparx/cli && sparx demo automotive
-```
+
 
 [English](#english) · [中文](#中文)
 
