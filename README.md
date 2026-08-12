@@ -7,7 +7,9 @@
 <div align="left">
 ## 🌳 橡树 OAK · Open Agent Kernel
 
-> **原生端侧智能体内核** — Native by design, open by nature.
+
+>
+**原生端侧智能体内核** — Native by design, open by nature.
 
 **Build AI agents that run 100% on-device.**
 **构建 100% 本地运行的 AI Agent。**
