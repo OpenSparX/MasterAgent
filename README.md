@@ -2,7 +2,10 @@
 <p align="center">
   <img src="docs/images/OAK.png" alt="Sparx Architecture" width="100%" />
 </p>
-# 🌳 橡树 OAK · Open Agent Kernel
+</div>
+
+<div align="left">
+## 🌳 橡树 OAK · Open Agent Kernel
 
 > **原生端侧智能体内核** — Native by design, open by nature.
 
@@ -17,8 +20,6 @@
 OAK 是面向终端设备的**开源智能体操作系统内核**，为 AI Agent 提供端侧推理、任务调度、工具调用与硬件加速的完整软件基座。
 
 OAK 之于 Agent OS，如同 Linux 内核之于安卓 / Ubuntu。我们不做完整操作系统，我们提供开源开放的内核层，车企、手机厂商、机器人公司基于 OAK 自研专属 Agent OS。
-
-
 
 
 
