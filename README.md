@@ -5,7 +5,7 @@
 </div>
 
 <div align="left">
-## 🌳 橡树 OAK · Open Agent Kernel
+🌳 橡树 OAK · Open Agent Kernel
 
 
 >
@@ -16,7 +16,8 @@
 
 **No cloud APIs. No latency. No privacy leaks.**
 **无需云端 API · 无网络延迟 · 无隐私泄露**
-> 
+>
+
 ## 是什么
 
 OAK 是面向终端设备的**开源智能体操作系统内核**，为 AI Agent 提供端侧推理、任务调度、工具调用与硬件加速的完整软件基座。
