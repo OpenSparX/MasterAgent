@@ -180,10 +180,22 @@ int cmd_run(const std::vector<std::string>& args) {
               << " · runtime=" << runtime_label << "\n";
 
     if (!real) {
-        std::cout << "  note: no model configured. "
-                     "deterministic skills work; inference returns a stub.\n"
-                     "        configure a GGUF path via --model, model.path in agent.yaml,\n"
-                     "        or the SPARX_MODEL environment variable.\n";
+        // This is the most common first-run confusion: a greeting matches a
+        // deterministic skill and answers instantly, so the agent looks fully
+        // working — then the next sentence hits the stub. Say up front which
+        // half is live, and give the one command that fixes it.
+        std::cout << "  note: no model configured — deterministic skills answer "
+                     "for real, anything else\n"
+                     "        returns a stub. To enable inference, download a "
+                     "model:\n"
+                     "\n"
+                     "          sparx pull qwen2.5-0.5b-instruct\n"
+                     "          sparx run --model ~/.sparx/models/"
+                     "qwen2.5-0.5b-instruct-q8_0.gguf\n"
+                     "\n"
+                     "        `sparx pull` lists other sizes. A path in "
+                     "agent.yaml (model.path) or\n"
+                     "        $SPARX_MODEL works too and makes it the default.\n";
     }
 
     if (resume) {
@@ -337,13 +349,18 @@ int cmd_run(const std::vector<std::string>& args) {
                           << result.status.error.message << "\n";
             }
         } else if (!matched) {
-            // Simulated mode — no model, no fake output
+            // Simulated mode — no model, no fake output. This appears when a
+            // skill did not match and the developer has not downloaded a model
+            // yet, so tell them how to close the gap rather than just saying
+            // "stub". The banner up top already explained once; one more line
+            // here is enough.
             auto elapsed = std::chrono::steady_clock::now() - start;
             auto us = std::chrono::duration_cast<
                 std::chrono::microseconds>(elapsed).count();
             std::cout << "  · route=inference  reality=SIMULATED  "
                       << (us / 1000.0) << "ms\n";
-            std::cout << "  (no model configured — inference stub)\n";
+            std::cout << "  (no response — download a model with "
+                         "`sparx pull qwen2.5-0.5b-instruct`)\n";
         }
         std::cout << "\n";
     }

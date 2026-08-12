@@ -227,16 +227,25 @@ cd my-agent
 # └── .sparx/
 #     └── wal.log         # Recovery log
 
-# 2. Add a custom skill
-sparx add skill weather
+# 2. Download a model (~530 MB, takes 1–2 min)
+sparx pull qwen2.5-0.5b-instruct
 
-# 3. Run locally (uses CPU inference by default)
-sparx run
+# 3. Run locally (CPU inference, no GPU/NPU needed)
+sparx run --model ~/.sparx/models/qwen2.5-0.5b-instruct-q8_0.gguf
+
+# Agent "my-agent" is running. Type a message or Ctrl+C to exit.
+# > hello
+# ✓ route=deterministic  skill=hello  0.02ms   (model not invoked)
+# > what is the capital of France?
+# ✓ route=inference  ttft=142ms  total=1830ms  tokens=28
+#   The capital of France is Paris.
 
 # 4. Try built-in demos
 sparx demo automotive     # Voice assistant
 sparx demo crash          # WAL recovery simulation
 ```
+
+> **💡 Tip:** `sparx run` without `--model` still works — deterministic skills (pattern-matched responses) answer normally. Only open-ended questions require a model. Add `model.path` in `agent.yaml` to avoid typing the path every time.
 
 ### Build Execution Plans
 
@@ -604,16 +613,25 @@ cd my-agent
 # └── .sparx/
 #     └── wal.log         # 恢复日志
 
-# 2. 添加自定义技能
-sparx add skill weather
+# 2. 下载模型（约 530 MB，1-2 分钟）
+sparx pull qwen2.5-0.5b-instruct
 
-# 3. 本地运行（默认使用 CPU 推理）
-sparx run
+# 3. 本地运行（CPU 推理，无需 GPU/NPU）
+sparx run --model ~/.sparx/models/qwen2.5-0.5b-instruct-q8_0.gguf
+
+# Agent "my-agent" 正在运行。输入消息或 Ctrl+C 退出。
+# > 你好
+# ✓ route=deterministic  skill=hello  0.02ms   (model not invoked)
+# > 法国的首都是哪里？
+# ✓ route=inference  ttft=142ms  total=1830ms  tokens=28
+#   法国的首都是巴黎。
 
 # 4. 尝试内置演示
 sparx demo automotive     # 语音助手
 sparx demo crash          # WAL 恢复模拟
 ```
+
+> **💡 提示：** 不带 `--model` 的 `sparx run` 也能用——确定性技能（模式匹配响应）照常工作。只有开放性问题需要模型。在 `agent.yaml` 中设置 `model.path` 可以省去每次输入路径。
 
 ### 构建执行计划
 

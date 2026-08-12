@@ -315,6 +315,37 @@ echo "=== 18. sparx help lists trace ==="
 echo "$HELP_OUT" | grep -q "trace" && t_pass "help shows trace command" \
   || t_fail "help missing trace"
 
+echo "=== 19. sparx pull lists models with default marked ==="
+OUT_PULL=$("$SPARX" pull 2>&1)
+check "$?" "0" "pull with no args shows help"
+echo "$OUT_PULL" | grep -q "qwen2.5-0.5b-instruct" && t_pass "pull lists qwen2.5-0.5b" \
+  || t_fail "pull missing qwen2.5-0.5b"
+echo "$OUT_PULL" | grep -q "← start here" && t_pass "pull marks default model" \
+  || t_fail "pull does not mark default"
+echo "$OUT_PULL" | grep -q "models land in" && t_pass "pull shows models directory" \
+  || t_fail "pull missing models directory"
+
+echo "=== 20. sparx pull rejects unknown model names ==="
+OUT_BAD=$("$SPARX" pull nonexistent-model 2>&1)
+check "$?" "1" "pull unknown model exits 1"
+echo "$OUT_BAD" | grep -q "✗ unknown model" && t_pass "pull reports unknown model" \
+  || t_fail "pull error message missing"
+echo "$OUT_BAD" | grep -q "known names:" && t_pass "pull lists known names inline" \
+  || t_fail "pull does not list alternatives"
+
+echo "=== 21. sparx run no-model banner mentions sparx pull ==="
+OUT_NO_MODEL=$(printf '\n' | "$SPARX" run 2>&1)
+echo "$OUT_NO_MODEL" | grep -q "sparx pull" && t_pass "no-model banner mentions pull" \
+  || t_fail "no-model banner missing pull command"
+echo "$OUT_NO_MODEL" | grep -q "qwen2.5-0.5b-instruct" \
+  && t_pass "no-model banner names default model" \
+  || t_fail "no-model banner missing model name"
+
+echo "=== 22. sparx run simulation stub mentions sparx pull ==="
+OUT_STUB=$(printf 'tell me about quantum computing\n' | "$SPARX" run 2>&1)
+echo "$OUT_STUB" | grep -q "sparx pull" && t_pass "stub response mentions pull" \
+  || t_fail "stub response missing pull hint"
+
 echo
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

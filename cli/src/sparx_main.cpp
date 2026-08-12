@@ -77,6 +77,29 @@ static void printVersion() {
 }
 
 int main(int argc, char* argv[]) {
+    // Guard against the most common macOS sandboxing problem: `sparx` is
+    // invoked from a directory the terminal has no TCC access to (e.g.
+    // ~/Downloads before granting Full Disk Access). std::filesystem calls to
+    // current_path() throw a filesystem_error, which used to produce the
+    // deeply confusing "libc++abi: terminating due to uncaught exception"
+    // abort. Catch it at the outermost level and say something actionable.
+    try {
+        (void)fs::current_path();
+    } catch (const fs::filesystem_error&) {
+        std::cerr << "  ✗ sparx cannot read the current directory.\n"
+                     "    This usually means macOS privacy restrictions are "
+                     "blocking access.\n\n"
+                     "  Fix:\n"
+                     "    • Grant Full Disk Access to your terminal app\n"
+                     "      (System Settings → Privacy & Security → "
+                     "Full Disk Access)\n"
+                     "    • Or cd to a directory outside ~/Downloads, "
+                     "~/Desktop, ~/Documents:\n"
+                     "        cd ~\n"
+                     "        sparx init my-agent\n";
+        return 1;
+    }
+
     if (argc < 2) {
         printUsage();
         return 0;

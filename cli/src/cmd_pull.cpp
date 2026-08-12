@@ -41,25 +41,49 @@ struct ModelEntry {
     const char* sha256;         // nullptr = no checksum
 };
 
-// These URLs point to HuggingFace Hub. The specific revisions are pinned
-// so a `sparx pull` today gives the same bits as next month.
+// These URLs point to HuggingFace Hub. Paths are case-sensitive: the Qwen2.5
+// GGUF repos publish lower-case file names, the Qwen3 ones publish upper-case,
+// and getting either wrong is a 404 rather than a redirect. Sizes are the
+// approximate on-disk bytes and are only used to render the progress bar and
+// to spot a truncated earlier download — completion is decided by curl's exit
+// status, never by these numbers.
 constexpr ModelEntry KNOWN_MODELS[] = {
-    {"qwen3-4b",
-     "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/qwen3-4b-q4_k_m.gguf",
-     "qwen3-4b-q4_k_m.gguf",
-     2'700'000'000ULL,
+    // Default for the quick start: small enough to download over a phone
+    // tether, good enough to hold a conversation.
+    {"qwen2.5-0.5b-instruct",
+     "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf",
+     "qwen2.5-0.5b-instruct-q8_0.gguf",
+     531'000'000ULL,
      nullptr},
-    {"qwen3-1.7b",
-     "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/qwen3-1.7b-q4_k_m.gguf",
-     "qwen3-1.7b-q4_k_m.gguf",
-     1'100'000'000ULL,
+    {"qwen2.5-1.5b-instruct",
+     "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+     "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+     986'000'000ULL,
+     nullptr},
+    {"qwen2.5-3b-instruct",
+     "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
+     "qwen2.5-3b-instruct-q4_k_m.gguf",
+     1'930'000'000ULL,
      nullptr},
     {"qwen3-0.6b",
-     "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/qwen3-0.6b-q8_0.gguf",
-     "qwen3-0.6b-q8_0.gguf",
-     650'000'000ULL,
+     "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf",
+     "Qwen3-0.6B-Q8_0.gguf",
+     639'000'000ULL,
+     nullptr},
+    {"qwen3-1.7b",
+     "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
+     "Qwen3-1.7B-Q4_K_M.gguf",
+     1'110'000'000ULL,
+     nullptr},
+    {"qwen3-4b",
+     "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+     "Qwen3-4B-Q4_K_M.gguf",
+     2'500'000'000ULL,
      nullptr},
 };
+
+/// The model `sparx pull` suggests when the developer has not picked one.
+constexpr const char* DEFAULT_MODEL = "qwen2.5-0.5b-instruct";
 
 const ModelEntry* lookupModel(const std::string& name) {
     for (const auto& m : KNOWN_MODELS) {
@@ -107,50 +131,78 @@ void drawProgress(std::uint64_t downloaded, std::uint64_t total,
     std::fflush(stderr);
 }
 
+/// Reads a whole small file. Returns false if it does not exist yet.
+bool readSmallFile(const fs::path& path, std::string& out) {
+    std::ifstream in(path);
+    if (!in) return false;
+    std::getline(in, out);
+    return true;
+}
+
 /// Downloads url to dest using curl (universally available on macOS/Linux/Android).
 /// Shows a progress bar. Returns true on success.
+///
+/// curl runs detached so the progress bar can be driven from the growing
+/// `.part` file, which means its exit status has to come back out of band: the
+/// shell writes it to a sentinel file that this function polls for. That
+/// sentinel is the ONLY thing that decides success. Deciding from file size
+/// instead is what makes a 404 look like a finished download — HuggingFace
+/// answers a bad path with a short HTML error body, and renaming that to
+/// .gguf produces a model file that only fails later, inside llama-server,
+/// with an error that points nowhere near the real cause.
 bool downloadWithProgress(const std::string& url, const fs::path& dest,
                           std::uint64_t expected_size) {
-    // Use curl with --write-out to get status. The progress callback is
-    // handled by reading the growing file size in a loop.
     const fs::path tmp = dest.string() + ".part";
+    const fs::path status_file = dest.string() + ".status";
+    const fs::path error_file = dest.string() + ".stderr";
 
-    // Start curl in background
-    const std::string cmd = "curl -fSL --connect-timeout 15 "
-        "-o '" + tmp.string() + "' '" + url + "' 2>/dev/null &";
+    std::error_code ec;
+    fs::remove(tmp, ec);
+    fs::remove(status_file, ec);
+    fs::remove(error_file, ec);
+
+    // -f makes curl fail on HTTP >= 400 instead of saving the error body.
+    // The subshell records the exit status atomically-enough for a poll loop:
+    // the temp-then-rename keeps a half-written status out of the reader.
+    const std::string cmd =
+        "( curl -fSL --connect-timeout 15 -o '" + tmp.string() + "' '" + url +
+        "' 2>'" + error_file.string() + "'; "
+        "printf '%s' \"$?\" > '" + status_file.string() + ".tmp'; "
+        "mv '" + status_file.string() + ".tmp' '" + status_file.string() + "' ) &";
     std::system(cmd.c_str());
 
-    // Wait for the file to appear
-    for (int wait = 0; wait < 50 && !fs::exists(tmp); ++wait) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    if (!fs::exists(tmp)) {
-        std::cerr << "\n  ✗ download did not start (network?)\n";
-        return false;
-    }
-
-    auto start = std::chrono::steady_clock::now();
+    const auto start = std::chrono::steady_clock::now();
     std::uint64_t last_size = 0;
     int stall_count = 0;
+    std::string status_text;
+    bool drew_bar = false;
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-        std::error_code ec;
-        const auto current_size = static_cast<std::uint64_t>(
-            fs::file_size(tmp, ec));
-        if (ec) continue;
+        const auto current_size = fs::exists(tmp)
+            ? static_cast<std::uint64_t>(fs::file_size(tmp, ec))
+            : 0;
+        if (ec) ec.clear();
 
-        auto elapsed = std::chrono::steady_clock::now() - start;
-        double secs = std::chrono::duration<double>(elapsed).count();
-        double speed = secs > 0 ? (current_size / 1'000'000.0) / secs : 0;
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        const double secs = std::chrono::duration<double>(elapsed).count();
+        const double speed = secs > 0 ? (current_size / 1'000'000.0) / secs : 0;
 
-        drawProgress(current_size, expected_size, speed);
+        if (current_size > 0) {
+            drawProgress(current_size, expected_size, speed);
+            drew_bar = true;
+        }
+
+        // curl has exited: its status is authoritative, so stop polling.
+        if (readSmallFile(status_file, status_text)) break;
 
         if (current_size == last_size) {
-            ++stall_count;
-            if (stall_count > 50) {  // 10 seconds with no progress
-                std::cerr << "\n  ✗ download stalled\n";
+            // A stall only matters once bytes have started moving; before that
+            // curl is still connecting and TLS-handshaking.
+            if (++stall_count > 150) {  // 30s with no growth
+                if (drew_bar) std::fprintf(stderr, "\n");
+                std::cerr << "  ✗ download stalled with no data for 30s\n";
                 fs::remove(tmp, ec);
                 return false;
             }
@@ -158,21 +210,53 @@ bool downloadWithProgress(const std::string& url, const fs::path& dest,
             stall_count = 0;
             last_size = current_size;
         }
+    }
 
-        // Check if curl finished (file stopped growing and reached expected)
-        if (expected_size > 0 && current_size >= expected_size) {
-            break;
+    if (drew_bar) std::fprintf(stderr, "\n");
+
+    const int curl_status = status_text.empty() ? -1 : std::atoi(status_text.c_str());
+    fs::remove(status_file, ec);
+
+    if (curl_status != 0) {
+        std::string detail;
+        readSmallFile(error_file, detail);
+        std::cerr << "  ✗ download failed (curl exit " << curl_status << ")";
+        if (!detail.empty()) std::cerr << ": " << detail;
+        std::cerr << "\n";
+        if (curl_status == 22) {
+            std::cerr << "    the server rejected the URL (HTTP 4xx/5xx). "
+                         "if this is a built-in model name, the upstream "
+                         "repository may have moved the file.\n";
         }
-        // For unknown size, check if curl process is done
-        if (expected_size == 0 && stall_count > 5) {
-            // Verify curl exited successfully
-            break;
+        fs::remove(tmp, ec);
+        fs::remove(error_file, ec);
+        return false;
+    }
+    fs::remove(error_file, ec);
+
+    if (!fs::exists(tmp)) {
+        std::cerr << "  ✗ download reported success but produced no file\n";
+        return false;
+    }
+
+    // A GGUF starts with the magic bytes "GGUF". Checking them turns "the
+    // download was actually an HTML error page" into an error here rather than
+    // a confusing failure inside llama-server later. Only enforced for .gguf
+    // destinations so `sparx pull <url>` of anything else still works.
+    if (dest.extension() == ".gguf") {
+        std::ifstream probe(tmp, std::ios::binary);
+        char magic[4] = {};
+        probe.read(magic, 4);
+        if (probe.gcount() != 4 || std::string(magic, 4) != "GGUF") {
+            std::cerr << "  ✗ downloaded file is not a GGUF model "
+                         "(bad magic bytes)\n";
+            std::cerr << "    the URL likely returned an error page rather "
+                         "than model weights\n";
+            fs::remove(tmp, ec);
+            return false;
         }
     }
-    std::fprintf(stderr, "\n");
 
-    // Rename .part to final
-    std::error_code ec;
     fs::rename(tmp, dest, ec);
     if (ec) {
         std::cerr << "  ✗ failed to rename download: " << ec.message() << "\n";
@@ -188,11 +272,14 @@ int cmd_pull(const std::vector<std::string>& args) {
         std::cout << "\n  usage: sparx pull <model>\n\n";
         std::cout << "  available models:\n";
         for (const auto& m : KNOWN_MODELS) {
+            const bool is_default = std::string(m.name) == DEFAULT_MODEL;
             std::cout << "    " << m.name << "  ("
-                      << humanSize(m.size_bytes) << ")\n";
+                      << humanSize(m.size_bytes) << ")"
+                      << (is_default ? "   ← start here" : "") << "\n";
         }
         std::cout << "\n  or pass a URL directly:\n";
-        std::cout << "    sparx pull https://example.com/model.gguf\n\n";
+        std::cout << "    sparx pull https://example.com/model.gguf\n";
+        std::cout << "\n  models land in " << modelsDir() << "\n\n";
         return 0;
     }
 
@@ -212,7 +299,11 @@ int cmd_pull(const std::vector<std::string>& args) {
         const auto* entry = lookupModel(model_or_url);
         if (!entry) {
             std::cerr << "  ✗ unknown model: " << model_or_url << "\n";
-            std::cerr << "  run `sparx pull` with no arguments to see available models\n";
+            std::cerr << "    known names:";
+            for (const auto& m : KNOWN_MODELS) std::cerr << " " << m.name;
+            std::cerr << "\n";
+            std::cerr << "    run `sparx pull` with no arguments for sizes, "
+                         "or pass a GGUF URL directly\n";
             return 1;
         }
         url = entry->url;
@@ -245,9 +336,21 @@ int cmd_pull(const std::vector<std::string>& args) {
         return 1;
     }
 
-    std::cout << "  ✓ download complete: " << dest.string() << "\n";
+    std::error_code size_ec;
+    const auto final_size = static_cast<std::uint64_t>(fs::file_size(dest, size_ec));
+    std::cout << "  ✓ download complete";
+    if (!size_ec) std::cout << " (" << humanSize(final_size) << ")";
+    std::cout << "\n    " << dest.string() << "\n";
+
+    // `sparx run` resolves a model from --model, then agent.yaml, then
+    // $SPARX_MODEL. Show the flag first because it works from any directory,
+    // and the agent.yaml form second because that is what makes it stick.
     std::cout << "\n  next steps:\n";
     std::cout << "    sparx run --model " << dest.string() << "\n";
+    std::cout << "\n  or make it the default for this agent, in agent.yaml:\n";
+    std::cout << "    model:\n";
+    std::cout << "      path: " << dest.string() << "\n";
+    std::cout << "\n  on-device (Qualcomm NPU) deployment is a separate step:\n";
     std::cout << "    sparx deploy --device 1 --model " << dest.string() << "\n\n";
     return 0;
 }
