@@ -131,7 +131,29 @@ echo "$OUT5" | grep -q "MISMATCH" && t_pass "mismatch is reported clearly" || t_
 [ -f "$ROOT/prefix4/bin/sparx" ] && t_fail "installed despite bad checksum" || t_pass "refused to install bad download"
 
 echo "=== 8. no temp dirs leaked ==="
-LEAKED=$(find /tmp -maxdepth 1 -name 'sparx*' -newer "$V2/scripts/install.sh" -type d 2>/dev/null | grep -v sparx_e2e | grep -v sparx_verify | wc -l | tr -d ' ')
+# install.sh creates its scratch dir with `mktemp -d`, falling back to
+# `mktemp -d -t sparx`, and removes it from an EXIT/INT/TERM trap. Only that
+# fallback shape is ours to account for: `sparx.XXXXXXXX`.
+#
+# This must not match every /tmp entry starting with "sparx" — sibling suites
+# own long-lived working directories there (sparx_cli_e2e, sparx_npm_e2e), and
+# counting those reported another suite's scratch space as a leak here.
+#
+# Both plausible locations are searched. mktemp honours $TMPDIR, which on
+# macOS is a per-user /var/folders/... path, so searching only /tmp there
+# matched nothing no matter what leaked. Paths are resolved with `pwd -P`
+# because /tmp is a symlink to /private/tmp on macOS and `find` does not
+# descend into a symlinked starting point with -maxdepth 1.
+leak_roots() {
+    for d in "${TMPDIR:-}" /tmp; do
+        [ -n "$d" ] && [ -d "$d" ] || continue
+        (cd "$d" 2>/dev/null && pwd -P)
+    done | sort -u
+}
+LEAKED=$(leak_roots | while read -r d; do
+    find "$d" -maxdepth 1 -type d -name 'sparx.??????*' \
+        -newer "$V2/scripts/install.sh" 2>/dev/null
+done | wc -l | tr -d ' ')
 check "$LEAKED" "0" "no leaked temp dirs"
 
 echo
