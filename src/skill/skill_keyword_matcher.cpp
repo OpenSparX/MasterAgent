@@ -8,11 +8,14 @@
 namespace master_agent::skill {
 namespace {
 
-bool contains_text(const std::string& haystack, const std::string& needle) {
-    if (needle.empty()) {
+/// 优化：预归一化 needle，避免重复分配。
+/// haystack 仍需就地小写化，但只分配一次。
+bool contains_text(const std::string& haystack, const std::string& needle_lower) {
+    if (needle_lower.empty()) {
         return false;
     }
-    return to_lower_ascii_copy(haystack).find(to_lower_ascii_copy(needle)) != std::string::npos;
+    std::string haystack_lower = to_lower_ascii_copy(haystack);
+    return haystack_lower.find(needle_lower) != std::string::npos;
 }
 
 void append_unique_keyword(std::vector<std::string>& matched_keywords, const std::string& keyword) {
@@ -31,6 +34,8 @@ void append_unique_keyword(std::vector<std::string>& matched_keywords, const std
 /// - 任一 tag 包含 query
 /// - description 包含 query
 /// 只要任意一项命中，就认为当前 Skill 命中。
+///
+/// 优化：预归一化 query 为小写，避免每次匹配都重复转换。
 bool SkillKeywordMatcher::match_meta(
     const std::string& query,
     const SkillRecord& record,
@@ -41,23 +46,30 @@ bool SkillKeywordMatcher::match_meta(
         return false;
     }
 
+    const std::string query_lower = to_lower_ascii_copy(normalized_query);
+
     for (const std::string& name : record.name_zh) {
-        if (contains_text(name, normalized_query) || contains_text(normalized_query, name)) {
+        const std::string name_lower = to_lower_ascii_copy(name);
+        if (name_lower.find(query_lower) != std::string::npos ||
+            query_lower.find(name_lower) != std::string::npos) {
             hit.matched_name = true;
             append_unique_keyword(hit.matched_keywords, name);
         }
     }
 
     for (const std::string& tag : record.tag) {
-        if (contains_text(tag, normalized_query) || contains_text(normalized_query, tag)) {
+        const std::string tag_lower = to_lower_ascii_copy(tag);
+        if (tag_lower.find(query_lower) != std::string::npos ||
+            query_lower.find(tag_lower) != std::string::npos) {
             hit.matched_tag = true;
             append_unique_keyword(hit.matched_keywords, tag);
         }
     }
 
+    const std::string desc_lower = to_lower_ascii_copy(record.description);
     hit.matched_description =
-        contains_text(record.description, normalized_query) ||
-        contains_text(normalized_query, record.description);
+        desc_lower.find(query_lower) != std::string::npos ||
+        query_lower.find(desc_lower) != std::string::npos;
     if (hit.matched_description) {
         append_unique_keyword(hit.matched_keywords, record.description);
     }

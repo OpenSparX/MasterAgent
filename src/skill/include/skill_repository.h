@@ -10,9 +10,12 @@
 
 namespace master_agent::skill {
 
+class SkillEngineImpl;
+
 /// 内存仓库。
-/// 这个模块只做“当前内存数据管理”。
+/// 这个模块只做”当前内存数据管理”。
 class SkillRepository {
+    friend class SkillEngineImpl;
 public:
     /// 设置当前 Skill 库目录。
     void set_library_dir(std::string skill_library_dir);

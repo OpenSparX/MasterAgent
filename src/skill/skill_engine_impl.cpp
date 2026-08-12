@@ -296,6 +296,9 @@ bool SkillEngineImpl::deleteSkill(const std::string& skill_name) {
 /// 1. 只在元数据层做简单命中判断
 /// 2. 命中条件仅限 name_zh / tag / description
 /// 3. 当前设计要求命中结果直接披露完整正文层，因此返回阶段总是加载详情
+///
+/// 优化：避免全量拷贝 snapshot，改为持锁遍历 + 收集命中 skill_name，
+/// 然后在锁外逐个查询详情。内存占用从 O(N) 降至 O(k)，N=总数，k=命中数。
 SkillRouteResult SkillEngineImpl::routeSkills(const SkillRouteRequest& request) const {
     SkillRouteResult result;
 
@@ -304,26 +307,30 @@ SkillRouteResult SkillEngineImpl::routeSkills(const SkillRouteRequest& request) 
         return result;
     }
 
-    const std::unordered_map<std::string, SkillRecord> snapshot = repository_.snapshot();
     std::vector<SkillSearchHit> hits;
-    hits.reserve(snapshot.size());
 
-    // 第一阶段：基于 name_zh/tag/description 做简单命中。
-    for (const auto& [_, record] : snapshot) {
-        if (!record.enabled) {
-            continue;
+    // 第一阶段：持锁遍历，只收集命中的 skill_name 和 hit 元数据
+    {
+        std::shared_lock<std::shared_mutex> lock(repository_.mutex_);
+        hits.reserve(repository_.skills_by_name_.size());
+
+        for (const auto& [_, record] : repository_.skills_by_name_) {
+            if (!record.enabled) {
+                continue;
+            }
+
+            SkillSearchHit hit;
+            hit.skill_name = record.skill_name;
+            hit.description = record.description;
+            hit.loaded_level = SkillDisclosureLevel::MetaOnly;
+
+            if (!matcher_.match_meta(query, record, hit)) {
+                continue;
+            }
+            hits.push_back(std::move(hit));
         }
-
-        SkillSearchHit hit;
-        hit.skill_name = record.skill_name;
-        hit.description = record.description;
-        hit.loaded_level = SkillDisclosureLevel::MetaOnly;
-
-        if (!matcher_.match_meta(query, record, hit)) {
-            continue;
-        }
-        hits.push_back(std::move(hit));
     }
+    // 锁已释放
 
     std::sort(
         hits.begin(),
@@ -415,6 +422,7 @@ std::optional<std::string> SkillEngineImpl::getSkillDetail(const std::string& na
 /// - 先读索引
 /// - 再逐个确认正文文件都能读到
 /// - 全部成功后再整体替换内存仓库
+/// - 清空 loader 缓存，避免脏读
 bool SkillEngineImpl::reloadSkillLibrary(const std::string& skill_library_dir) {
     const std::string target_dir = trim_copy(skill_library_dir);
     const std::string dir = target_dir.empty() ? repository_.get_library_dir() : target_dir;
@@ -434,6 +442,7 @@ bool SkillEngineImpl::reloadSkillLibrary(const std::string& skill_library_dir) {
         }
     }
 
+    loader_.clear_cache();
     repository_.set_library_dir(dir);
     repository_.replace_all(std::move(next_skills));
     return true;

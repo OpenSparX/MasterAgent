@@ -4,9 +4,9 @@
  * @file skill_engine.h
  * @brief Skill 引擎对外接口
  *
- * 当前版本面向“纯文本型 Skill 仓库”，主路径只处理：
+ * 当前版本面向”纯文本型 Skill 仓库”，主路径只处理：
  * - skills_index.json 中的元数据索引
- * - skill_bodies/*.txt 中的正文内容
+ * - skill_bodies/ 下的 .txt 正文内容
  *
  * 这层只暴露稳定的查询与管理接口，让调用方不感知内部文件加载和匹配细节。
  */

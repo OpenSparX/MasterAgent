@@ -80,6 +80,10 @@ std::string planState(const TurnResult& result) {
             return "CANCELLED";
         case PlanState::Unknown:
             return "UNKNOWN";
+        case PlanState::Suspended:
+            return "SUSPENDED";
+        case PlanState::Compensating:
+            return "COMPENSATING";
     }
     return "UNKNOWN";
 }
