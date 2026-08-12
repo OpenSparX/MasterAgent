@@ -253,6 +253,68 @@ echo "$OUT_DEMO_PLAN" | grep -q "Plan VALID" && t_pass "demo plan validates" \
 echo "$OUT_DEMO_PLAN" | grep -q "DISPATCH" && t_pass "demo plan shows execution" \
   || t_fail "demo plan missing execution trace"
 
+echo "=== 17. sparx trace reads runtime TaskEvent records ==="
+TRACE_FILE="/tmp/sparx_test_trace.jsonl"
+cat > "$TRACE_FILE" <<'JSONL'
+{"event_id":"e1","event_type":"PLAN_COMMITTED","plan_id":"plan-1","pid":"","activation_id":"","execution_id":"","plan_version":1,"orchestrator_epoch":1,"occurred_at_utc_ms":1785200000000,"payload_digest":"d1","trace_id":"t1"}
+{"event_id":"e2","event_type":"NODE_READY","plan_id":"plan-1","pid":"pid-1","activation_id":"a1","execution_id":"x1","plan_version":2,"orchestrator_epoch":1,"occurred_at_utc_ms":1785200000010,"payload_digest":"d2","trace_id":"t1"}
+{"event_id":"e3","event_type":"PLAN_TERMINAL","plan_id":"plan-2","pid":"","activation_id":"","execution_id":"","plan_version":3,"orchestrator_epoch":1,"occurred_at_utc_ms":1785200000020,"payload_digest":"d3","trace_id":"t2"}
+JSONL
+
+OUT_TRACE=$("$SPARX" trace show "$TRACE_FILE" 2>&1)
+check "$?" "0" "trace show exits 0"
+echo "$OUT_TRACE" | grep -q "3 events" && t_pass "trace show counts events" \
+  || t_fail "trace show wrong event count"
+echo "$OUT_TRACE" | grep -q "PLAN_COMMITTED" && t_pass "trace show lists event types" \
+  || t_fail "trace show missing event type"
+
+# A plan selector must narrow the projection, not silently return everything.
+OUT_FILTERED=$("$SPARX" trace show "$TRACE_FILE" --plan plan-1 2>&1)
+echo "$OUT_FILTERED" | grep -q "2 events" && t_pass "trace --plan filters events" \
+  || t_fail "trace --plan did not filter"
+echo "$OUT_FILTERED" | grep -q "PLAN_TERMINAL" \
+  && t_fail "trace --plan leaked another plan's events" \
+  || t_pass "trace --plan excludes other plans"
+
+OUT_EXEC=$("$SPARX" trace show "$TRACE_FILE" --execution x1 2>&1)
+echo "$OUT_EXEC" | grep -q "1 event" && t_pass "trace --execution filters events" \
+  || t_fail "trace --execution did not filter"
+
+OUT_CAP=$("$SPARX" trace show "$TRACE_FILE" --max-records 2 2>&1)
+echo "$OUT_CAP" | grep -q "2 events" && t_pass "trace --max-records bounds output" \
+  || t_fail "trace --max-records ignored"
+
+OUT_TRACE_JSON=$("$SPARX" trace export "$TRACE_FILE" --format=json 2>&1)
+echo "$OUT_TRACE_JSON" | grep -q '"event_type": "PLAN_COMMITTED"' \
+  && t_pass "trace export emits JSON" || t_fail "trace export JSON broken"
+
+# A JSON array is accepted so exported traces can be re-read.
+echo "$OUT_TRACE_JSON" > /tmp/sparx_test_trace_array.json
+"$SPARX" trace show /tmp/sparx_test_trace_array.json >/dev/null 2>&1
+check "$?" "0" "trace show accepts a JSON array"
+
+"$SPARX" trace show /tmp/sparx_test_trace_missing.jsonl >/dev/null 2>&1
+check "$?" "1" "trace show exits 1 for a missing file"
+
+# An incomplete record must fail loudly rather than render as a partial trace.
+printf '{"event_id":"only-id"}\n' > /tmp/sparx_test_trace_bad.jsonl
+"$SPARX" trace show /tmp/sparx_test_trace_bad.jsonl >/dev/null 2>&1
+check "$?" "1" "trace show rejects an incomplete record"
+
+"$SPARX" trace show "$TRACE_FILE" --format=yaml >/dev/null 2>&1
+check "$?" "1" "trace show rejects an unknown format"
+
+"$SPARX" trace >/dev/null 2>&1 && t_pass "trace with no args exits 0 (shows help)" \
+  || t_fail "trace with no args should show help"
+"$SPARX" trace bogus >/dev/null 2>&1
+check "$?" "1" "unknown trace subcommand exits 1"
+
+rm -f "$TRACE_FILE" /tmp/sparx_test_trace_array.json /tmp/sparx_test_trace_bad.jsonl
+
+echo "=== 18. sparx help lists trace ==="
+echo "$HELP_OUT" | grep -q "trace" && t_pass "help shows trace command" \
+  || t_fail "help missing trace"
+
 echo
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

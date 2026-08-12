@@ -17,6 +17,8 @@ set(SPARX_SOURCES
     src/cmd_demo.cpp
     src/cmd_shell.cpp
     src/cmd_plan.cpp
+    src/cmd_trace.cpp
+    src/sparx_trace.cpp
 )
 
 # The runtime adapters are a library so tests can link them without pulling in

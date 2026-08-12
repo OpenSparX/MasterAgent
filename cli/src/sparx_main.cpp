@@ -36,6 +36,7 @@ static void printUsage() {
     demo              Run built-in demos (automotive, crash recovery, streaming)
     shell             Interactive session with a deployed agent
     plan              Build, validate, and visualize execution plans
+    trace             Inspect runtime execution traces (TaskEvent records)
 
   Options:
     --help, -h        Show this help
@@ -46,6 +47,7 @@ static void printUsage() {
     sparx add skill climate_control
     sparx demo automotive              # 30-second killer demo
     sparx plan show plans/route.yaml   # visualize an execution plan
+    sparx trace show .sparx/trace.jsonl  # inspect a runtime trace
     sparx run
     sparx deploy --device 1
     sparx doctor
@@ -108,6 +110,7 @@ int main(int argc, char* argv[]) {
     if (cmd == "demo") return sparx::cmd_demo(args);
     if (cmd == "shell") return sparx::cmd_shell(args);
     if (cmd == "plan") return sparx::cmd_plan(args);
+    if (cmd == "trace") return sparx::cmd_trace(args);
 
     std::cerr << "  unknown command: " << cmd << "\n";
     std::cerr << "  run `sparx --help` for available commands\n";
