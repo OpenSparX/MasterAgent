@@ -186,10 +186,137 @@ static int demoAutomotive() {
     return 0;
 }
 
+static int demoPlan() {
+    std::cout << "\n";
+    std::cout << "🎯 Execution Plan Demo — Route Briefing\n";
+    std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+
+    std::cout << "Scenario: Driver asks \"How long will it take to get home?\"\n";
+    std::cout << "The agent needs to: check route, estimate ETA, check traffic,\n";
+    std::cout << "then compose a briefing from all three results.\n\n";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    // Phase 1: Building the DAG
+    std::cout << "Step 1: Building execution plan\n";
+    std::cout << "─────────────────────────────────\n\n";
+
+    slowPrint("  DagBuilder(\"route-briefing\")\n", 60);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    slowPrint("    .node(\"nav\", \"vehicle.navigation.calculateRoute\")\n", 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    slowPrint("    .node(\"eta\", \"vehicle.navigation.estimateArrival\")\n", 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    slowPrint("    .node(\"traffic\", \"vehicle.navigation.getTrafficConditions\")\n", 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    slowPrint("    .node(\"briefing\", \"assistant.compose.routeBriefing\")\n", 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    slowPrint("        .after(\"nav\")\n", 40);
+    slowPrint("        .after(\"eta\")\n", 40);
+    slowPrint("        .after(\"traffic\")\n", 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    slowPrint("    .deadline(5000ms)\n", 40);
+    slowPrint("    .build()\n\n", 60);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    std::cout << "  ✓ Built IntentDAG with 4 nodes, 3 edges\n\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    // Phase 2: Visualize
+    std::cout << "Step 2: DAG visualization\n";
+    std::cout << "─────────────────────────────────\n\n";
+
+    std::cout << "  ┌──────────┐  ┌──────────┐  ┌───────────┐\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  │   nav    │  │   eta    │  │  traffic  │\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  │ calcRoute│  │ estArrive│  │ getTraffic│\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  └────┬─────┘  └────┬─────┘  └─────┬─────┘\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "       │             │               │\n";
+    std::cout << "       └─────────────┼───────────────┘\n";
+    std::cout << "                     │\n";
+    std::cout << "                     ▼\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "              ┌─────────────┐\n";
+    std::cout << "              │  briefing   │\n";
+    std::cout << "              │routeBriefing│\n";
+    std::cout << "              └─────────────┘\n\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    std::cout << "  Shape: fan-out → join\n";
+    std::cout << "  nav, eta, traffic run in parallel (no mutual deps)\n";
+    std::cout << "  briefing waits for all three before executing\n\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    // Phase 3: Validation
+    std::cout << "Step 3: Orchestrator validation\n";
+    std::cout << "─────────────────────────────────\n\n";
+
+    slowPrint("  orch.validateDAG(dag, admission, ctx)...\n", 60);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    std::cout << "\n";
+    std::cout << "  ├─ Deadline check          ✓  5000ms >= 4 nodes × 500ms budget\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  ├─ Cycle detection         ✓  no cycles in edge graph\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  ├─ Capability allowlist    ✓  4/4 actions in admission.allowed\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  ├─ Priority authorization  ✓  P1 (no special auth required)\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "  └─ Node count limit        ✓  4 <= 32 max\n\n";
+
+    std::cout << "  ✓ Plan VALID — ready for execution\n\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    // Phase 4: Simulated execution
+    std::cout << "Step 4: Simulated execution\n";
+    std::cout << "─────────────────────────────────\n\n";
+
+    std::cout << "  t=0ms   ┃ DISPATCH  nav, eta, traffic (parallel)\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    std::cout << "  t=45ms  ┃ COMPLETE  eta → \"23 minutes\"\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::cout << "  t=62ms  ┃ COMPLETE  traffic → \"moderate, +4 min on I-280\"\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    std::cout << "  t=87ms  ┃ COMPLETE  nav → \"via US-101 → I-280\"\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    std::cout << "  t=87ms  ┃ JOIN      all deps met → dispatch briefing\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    std::cout << "  t=134ms ┃ COMPLETE  briefing → composed response\n\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    std::cout << "  Agent Response:\n";
+    std::cout << "  ┌─────────────────────────────────────────────────────────┐\n";
+    std::cout << "  │ \"It'll take about 23 minutes via US-101 to I-280.      │\n";
+    std::cout << "  │  Traffic is moderate — expect an extra 4 minutes on     │\n";
+    std::cout << "  │  I-280. Total estimate: 27 minutes.\"                    │\n";
+    std::cout << "  └─────────────────────────────────────────────────────────┘\n\n";
+
+    std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    std::cout << "⚡ Total latency: 134ms (parallel fan-out saved ~150ms)\n";
+    std::cout << "💾 WAL: all 4 operations logged with idempotency keys\n";
+    std::cout << "🔒 Privacy: route data processed entirely on-device\n\n";
+
+    std::cout << "Key takeaways:\n";
+    std::cout << "  • Nodes without mutual deps execute in parallel automatically\n";
+    std::cout << "  • The orchestrator validates before execution (fail-closed)\n";
+    std::cout << "  • Every node is WAL-protected — crash at any point is safe\n";
+    std::cout << "  • Total latency = critical path, not sum of all nodes\n\n";
+
+    std::cout << "Try it yourself:\n";
+    std::cout << "  sparx plan show examples/automotive_assistant/plans/route-briefing.yaml\n";
+    std::cout << "  sparx plan export plans/route-briefing.yaml --format=mermaid\n\n";
+
+    return 0;
+}
+
 int cmd_demo(const std::vector<std::string>& args) {
     if (args.empty()) {
         std::cout << "\n  available demos:\n";
-        std::cout << "    sparx demo automotive                30-second killer demo (recommended)\n";
+        std::cout << "    sparx demo automotive                30-second voice assistant demo\n";
+        std::cout << "    sparx demo plan                      execution plan (DAG) visualization\n";
         std::cout << "    sparx demo crash [--mid-tool-call]   WAL recovery + UNKNOWN state\n";
         std::cout << "    sparx demo resume                    recover from the crash above\n";
         std::cout << "    sparx demo stream                    streaming with commit verification\n\n";
@@ -203,6 +330,7 @@ int cmd_demo(const std::vector<std::string>& args) {
     }
 
     if (which == "automotive") return demoAutomotive();
+    if (which == "plan") return demoPlan();
     if (which == "crash") return demoCrash(mid_tool_call);
     if (which == "resume") return demoResume();
     if (which == "stream") return demoStream();

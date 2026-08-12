@@ -241,6 +241,18 @@ echo "=== 15. sparx plan --help ==="
 "$SPARX" plan >/dev/null 2>&1 && t_pass "plan with no args exits 0 (shows help)" \
   || t_fail "plan with no args should show help"
 
+echo "=== 16. sparx demo plan ==="
+OUT_DEMO_PLAN=$("$SPARX" demo plan 2>&1)
+check "$?" "0" "demo plan exits 0"
+echo "$OUT_DEMO_PLAN" | grep -q "Execution Plan Demo" && t_pass "demo plan header" \
+  || t_fail "demo plan missing header"
+echo "$OUT_DEMO_PLAN" | grep -q "DAG visualization" && t_pass "demo plan shows DAG" \
+  || t_fail "demo plan missing DAG"
+echo "$OUT_DEMO_PLAN" | grep -q "Plan VALID" && t_pass "demo plan validates" \
+  || t_fail "demo plan missing validation"
+echo "$OUT_DEMO_PLAN" | grep -q "DISPATCH" && t_pass "demo plan shows execution" \
+  || t_fail "demo plan missing execution trace"
+
 echo
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
