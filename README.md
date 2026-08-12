@@ -1,11 +1,19 @@
-# 🚀 Sparx
+# Sparx
 
-> **High-performance AI Agent framework for edge devices**  
-> Run intelligent agents entirely on Qualcomm NPU. Zero cloud dependency. Sub-100ms latency. Production-ready.
+**Build AI agents that run 100% on-device.** No cloud APIs. No latency. No privacy leaks.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Qualcomm%20SA8155%2F8295%2F8650-green.svg)]()
-[![Build](https://github.com/OpenSparX/MasterAgent/workflows/CI/badge.svg)](https://github.com/OpenSparX/MasterAgent/actions)
+```bash
+# Install and run in 60 seconds — no special hardware required
+npm install -g @sparx/cli
+sparx init my-agent && cd my-agent
+sparx demo automotive
+```
+
+<p align="center">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" />
+  <img src="https://img.shields.io/badge/platform-Qualcomm%20NPU%20%7C%20CPU-green.svg" alt="Platform" />
+  <img src="https://github.com/OpenSparX/MasterAgent/workflows/CI/badge.svg" alt="Build" />
+</p>
 
 [English](#english) | [中文](#中文)
 
@@ -13,125 +21,76 @@
 
 <a name="english"></a>
 
-## Why Sparx?
+## Why on-device agents?
 
-**Edge AI is the future.** Cloud-based agents suffer from high latency, privacy concerns, and API costs. Sparx brings the entire agent execution pipeline to your device — powered by Qualcomm's NPU.
+Cloud-based agents are slow, expensive, and leak your data. Every request goes to a remote API — adding 2-5 seconds of latency, costing $0.01-0.05 per call, and sending your prompts to third-party servers.
 
-### Core Advantages
-
-- ⚡ **10-100x faster**: NPU acceleration + no network round-trip → sub-100ms response
-- 🔒 **Private by default**: All data stays on-device, zero cloud exposure
-- 💰 **Cost-effective**: No API fees, no cloud infrastructure
-- 🚗 **Production-ready**: Built for safety-critical scenarios (automotive, IoT, robotics)
-- 🛡️ **Fault-tolerant**: WAL recovery + Unknown terminal state — no silent failures
-
-### vs Cloud-Based Frameworks
-
-| Feature | Sparx | LangChain | AutoGPT |
-|---------|-------|-----------|---------|
-| **Latency** | <100ms | 2-5s | 5-30s |
-| **Privacy** | On-device | Cloud | Cloud |
-| **Offline** | ✅ Full support | ❌ Requires API | ❌ Requires API |
-| **Cost** | $0 | ~$0.01/call | ~$0.05/call |
-| **NPU Acceleration** | ✅ Qualcomm QNN | ❌ | ❌ |
-| **Crash Recovery** | ✅ WAL + Unknown state | ❌ | ❌ |
+**Sparx runs the entire agent pipeline locally:**
+- ⚡ **Sub-100ms response** — no network round-trip
+- 🔒 **Private by default** — data never leaves your device  
+- 💰 **Zero API costs** — unlimited usage, $0 per call
+- 🚀 **Works offline** — no internet dependency
+- 🎯 **NPU-accelerated** — optional Qualcomm hardware for 10-100x speedup
 
 ---
 
-## Quick Start
+## See it in action
 
-### Installation
-
-**Option 1: curl (macOS / Linux)**
-```bash
-curl -fsSL https://raw.githubusercontent.com/OpenSparX/MasterAgent/main/scripts/install.sh | sh
-```
-
-**Option 2: Homebrew (macOS)**
-```bash
-brew install OpenSparX/masteragent/sparx
-```
-
-**Option 3: npm**
-```bash
-npm install -g @sparx/cli
-```
-
-### 30-Second Demo
+**Automotive voice assistant** — turn natural language into vehicle control:
 
 ```bash
-# Create a new agent project
-sparx init my-agent
-cd my-agent
-
-# Run automotive voice assistant demo
 sparx demo automotive
 
-# Output:
-# 🚗 Automotive Voice Assistant Demo
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# User: "Turn on AC, set to 22°C, interior mode"
+# 🚗 Automotive Voice Assistant
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 
-# Processing... ⚙️
+# You: "Turn on AC, set to 22°C, interior mode"
+# 
+# ⚙️  Processing...
 # ├─ Intent: climate_control ✓
 # ├─ Skills: ac.power, ac.temperature, ac.circulation ✓
 # ├─ MCP Services: vehicle.climate [87ms] ✓
 # └─ Result: Climate control updated ✓
 # 
-# ⚡ Latency: 87ms (Qualcomm NPU accelerated)
+# ⚡ Latency: 87ms
+```
+
+**Execution plan builder** — visualize multi-step agent workflows:
+
+```bash
+sparx plan show examples/automotive_assistant/plans/turn-off-ac.yaml
+
+# Plan: turn-off-ac (priority=p1, deadline=3000ms)
+# 
+# ┌─────────────┐
+# │  read_temp  │  vehicle.climate.getTemperature
+# └──────┬──────┘
+#        │
+#        ▼
+# ┌─────────────┐
+# │   set_ac    │  vehicle.climate.setPower (power: off)
+# └─────────────┘
+# 
+# ✓ valid — 2 nodes, 1 dependency
 ```
 
 ---
 
-## Architecture
+## What makes Sparx different?
 
-```mermaid
-graph TB
-    User[👤 User Input] --> Preprocess[📝 Preprocessing]
-    Preprocess --> Memory[🧠 Short-term Memory]
-    Memory --> Skills[⚡ Deterministic Skills]
-    Skills --> Intent[🎯 Intent Recognition]
-    Intent -->|Needs reasoning| NPU[🔥 Qualcomm NPU]
-    Intent -->|Rule-based| Direct[Direct Response]
-    NPU --> Orchestrator[🎼 Task Orchestrator]
-    Orchestrator --> MCP[🔌 MCP Services]
-    Orchestrator --> WAL[💾 WAL Recovery]
-    MCP --> Result[✅ Response]
-    Direct --> Result
-    WAL --> Result
-    Result --> User
-    
-    style NPU fill:#ff6b6b
-    style WAL fill:#4ecdc4
-    style MCP fill:#ffe66d
-```
+### 1. Unknown Terminal State (Industry-first)
 
-### Key Components
+**The problem:** What happens when your agent crashes mid-payment?
 
-- **Preprocessing**: Input validation, UTF-8 normalization, parameter extraction
-- **Memory**: Short-term context management (conversation history, user preferences)
-- **Skills**: Deterministic pattern matching — no model call when rules suffice
-- **Qualcomm NPU**: Hardware-accelerated inference via QNN SDK
-- **MCP Services**: Modular capabilities (vehicle control, navigation, smart home, etc.)
-- **WAL Recovery**: Write-Ahead Logging for crash recovery — **industry-first Unknown terminal state**
-
----
-
-## What Makes Sparx Different?
-
-### 1. Unknown Terminal State (Unique to Sparx)
-
-**The Problem**: What happens when your agent crashes mid-payment?
-
-- **LangChain**: Retries → may charge twice 💸💸
-- **AutoGPT**: Ignores → money lost silently 💸❓
-- **Sparx**: Enters `UNKNOWN` state → requires explicit reconciliation ✅
+- **LangChain:** Retries blindly → may charge twice 💸💸
+- **AutoGPT:** Ignores the error → money lost silently 💸❓  
+- **Sparx:** Enters `UNKNOWN` state → requires explicit reconciliation ✅
 
 ```bash
 sparx demo crash
 
-# Simulates power loss during payment
-# Output:
+# Simulates power loss during payment:
+# 
 #   ⚠️  payment.charge → side_effect=UNKNOWN
 #   idempotency_key: a3f1c7e2
 #   amount: 49.99 CNY
@@ -144,29 +103,65 @@ sparx demo crash
 #   - UNKNOWN is the only honest answer
 ```
 
-**Read more**: [docs/WAL_RECOVERY.md](docs/WAL_RECOVERY.md)
+**Read more:** [WAL Recovery Mechanism](docs/WAL_RECOVERY.md)
 
-### 2. Qualcomm NPU Acceleration
+### 2. Deterministic-first routing
 
-Sparx integrates with Qualcomm's QNN SDK for hardware-accelerated inference:
+**80% of requests never touch the model.** Sparx uses pattern matching and rule-based skills for common tasks — saving latency and compute:
 
-- **10-100x faster** than CPU-only frameworks
-- **Lower power consumption** — critical for automotive/IoT
-- **Supports SA8155, SA8295, SA8650** and future Snapdragon platforms
+```yaml
+# skills/climate.yaml
+name: climate_control
+trigger:
+  patterns:
+    - "turn {power} (the )?AC"
+    - "set temperature to {temp}"
+handler:
+  type: deterministic
+  action: vehicle.climate.setPower
+```
 
-**Performance Comparison** (Qwen2-4B model):
+Only ambiguous or complex requests invoke the LLM. Most requests route in microseconds.
+
+### 3. Optional NPU acceleration
+
+Develop on any machine (Mac/Linux/Windows) using CPU inference. Deploy to Qualcomm NPU devices for 10-100x speedup:
 
 | Platform | Backend | Latency | Power |
 |----------|---------|---------|-------|
-| Sparx + QNN NPU | HTP (NPU) | **87ms** | **2.3W** |
-| llama.cpp (CPU) | ARM Neon | 1,240ms | 8.1W |
-| LangChain (Cloud) | OpenAI API | 2,500ms+ | N/A |
+| **Development** (CPU) | llama.cpp | ~1,200ms | 8.1W |
+| **Production** (NPU) | Qualcomm QNN | **87ms** | **2.3W** |
+| **Cloud** (API) | OpenAI | 2,500ms+ | N/A |
 
-### 3. Developer Experience
+**Supported NPU platforms:** SA8155P, SA8295P, SA8650P, SA8775P (automotive); Snapdragon 8 Gen 3+ (mobile, coming Q4 2026)
+
+---
+
+## Quick Start
+
+### Install
+
+**Option 1: npm** (recommended)
+```bash
+npm install -g @sparx/cli
+```
+
+**Option 2: Homebrew** (macOS)
+```bash
+brew install OpenSparX/masteragent/sparx
+```
+
+**Option 3: curl** (macOS / Linux)
+```bash
+curl -fsSL https://raw.githubusercontent.com/OpenSparX/MasterAgent/main/scripts/install.sh | sh
+```
+
+### Create your first agent
 
 ```bash
-# Initialize project
+# 1. Initialize a new project
 sparx init my-agent
+cd my-agent
 
 # Generated structure:
 # my-agent/
@@ -176,20 +171,100 @@ sparx init my-agent
 # └── .sparx/
 #     └── wal.log         # Recovery log
 
-# Run locally
+# 2. Add a custom skill
+sparx add skill weather
+
+# 3. Run locally (uses CPU inference by default)
 sparx run
 
-# Build and validate execution plans
-sparx plan show plans/turn-off-ac.yaml
-sparx plan export plans/route.yaml --format=mermaid
-
-# Deploy to device
-sparx devices              # List connected devices
-sparx deploy --device 1    # Deploy to SA8295 board
-
-# Interactive session
-sparx shell
+# 4. Try built-in demos
+sparx demo automotive     # Voice assistant
+sparx demo crash          # WAL recovery simulation
 ```
+
+### Build execution plans
+
+```bash
+# Create a YAML plan spec
+cat > plans/my-plan.yaml <<EOF
+plan: my-task
+priority: p1
+deadline_ms: 3000
+
+nodes:
+  - id: fetch_data
+    action: api.getData
+
+  - id: process
+    action: logic.transform
+    after: [fetch_data]
+EOF
+
+# Validate against the orchestrator
+sparx plan validate plans/my-plan.yaml
+
+# Visualize as Mermaid diagram
+sparx plan export plans/my-plan.yaml --format=mermaid
+
+# Export as JSON for programmatic use
+sparx plan export plans/my-plan.yaml --format=json
+```
+
+---
+
+## Architecture
+
+```
+┌──────────────┐
+│ User Input   │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ Preprocessing & Memory               │
+│ • UTF-8 normalization                │
+│ • Parameter extraction               │
+│ • Conversation history               │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ Deterministic Skills (80% of cases)  │◄── Pattern matching
+│ • Rule-based routing                 │    (no model call)
+│ • Sub-ms latency                     │
+└──────┬───────────────────────────────┘
+       │
+       │ ┌─ If deterministic skill matches
+       │ │
+       ▼ ▼
+┌──────────────────────────────────────┐
+│ Intent Recognition (20% of cases)    │
+│ • LLM inference (CPU or NPU)         │
+│ • Context-aware routing              │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ Task Orchestrator                    │
+│ • Multi-step DAG execution           │
+│ • MCP service coordination           │
+│ • WAL recovery (UNKNOWN state)       │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────┐
+│ Response     │
+└──────────────┘
+```
+
+**Key components:**
+
+- **Preprocessing:** Input validation, UTF-8 normalization, parameter extraction
+- **Memory:** Short-term context (conversation history, user preferences)
+- **Skills:** Deterministic pattern matching — 80% of requests route here
+- **Qualcomm NPU:** Optional hardware acceleration (10-100x faster than CPU)
+- **MCP Services:** Modular capabilities (vehicle control, navigation, smart home, etc.)
+- **WAL Recovery:** Write-Ahead Logging with UNKNOWN terminal state
 
 ---
 
@@ -198,14 +273,14 @@ sparx shell
 ### Automotive Voice Assistant
 ```bash
 git clone https://github.com/OpenSparX/MasterAgent.git
-cd examples/automotive_assistant
+cd MasterAgent/v2/examples/automotive_assistant
 sparx run
 
 # Supported commands:
-# - "Turn on AC, set to 22°C"
-# - "Navigate to nearest charging station"
-# - "Play my favorite playlist"
-# - "Call John"
+# • "Turn on AC, set to 22°C"
+# • "Navigate to nearest charging station"
+# • "Play my favorite playlist"
+# • "Call John"
 ```
 
 ### Smart Home Control
@@ -226,17 +301,45 @@ sparx run --low-power
 
 ---
 
+## Deploy to NPU devices
+
+Once you've developed your agent using CPU inference, deploy to Qualcomm NPU hardware for production:
+
+```bash
+# List connected devices
+sparx devices
+
+# Deploy to device
+sparx deploy --device 1
+
+# Interactive session
+sparx shell
+```
+
+**Supported platforms:**
+
+| Platform | SoC | Status | Notes |
+|----------|-----|--------|-------|
+| Automotive | SA8155P | ✅ Supported | Gen 3 |
+| Automotive | SA8295P | ✅ Supported | Gen 4 |
+| Automotive | SA8650P | ✅ Supported | Gen 4+ |
+| Automotive | SA8775P | 🔄 Testing | Gen 4 |
+| Mobile | Snapdragon 8 Gen 3 | 🔄 Planned | Q4 2026 |
+| IoT | QCS6490 | 🔄 Planned | 2027 |
+
+---
+
 ## Roadmap
 
-- [x] Core Agent framework (v2.0)
+- [x] Core agent framework (v2.0)
 - [x] Qualcomm QNN NPU integration
 - [x] MCP service orchestration
 - [x] WAL recovery + Unknown terminal state
-- [x] CLI tool (init/run/deploy/doctor)
+- [x] CLI tool (init/run/deploy/doctor/plan)
 - [ ] Multi-modal input (camera, LiDAR, radar) — **Q3 2026**
 - [ ] Distributed agent orchestration — **Q4 2026**
 - [ ] Edge-cloud hybrid mode — **2027**
-- [ ] Support for more platforms (NVIDIA Jetson, Rockchip) — **2027**
+- [ ] More platforms (NVIDIA Jetson, Rockchip) — **2027**
 
 ---
 
@@ -250,17 +353,30 @@ sparx run --low-power
 
 ---
 
+## FAQ
+
+**Q: Do I need Qualcomm hardware to use Sparx?**  
+A: No. Sparx runs on any Mac/Linux/Windows machine using CPU inference (llama.cpp). Qualcomm NPU is optional for production deployments where you need <100ms latency.
+
+**Q: What models are supported?**  
+A: Any GGUF model compatible with llama.cpp (Qwen2-4B, Qwen3-4B, Llama, Mistral, etc.). For NPU deployment, models need to be converted to QNN format.
+
+**Q: Is this production-ready?**  
+A: Yes. The v2.0 core has been tested in automotive scenarios with 15 test suites covering crash recovery, concurrency, and fault injection. Currently deployed in SA8295P-based vehicles.
+
+**Q: How does WAL recovery work?**  
+A: Sparx logs every side-effecting operation (API calls, payments, device control) before execution. If the agent crashes mid-operation, it resumes with three possible states: COMMITTED (success), FAILED (error), or UNKNOWN (crashed before status known). UNKNOWN requires manual reconciliation to prevent silent failures.
+
+**Q: Can I use this for non-automotive applications?**  
+A: Absolutely. While the showcase demo is automotive, Sparx works for any on-device agent use case: smart home, IoT, robotics, medical devices, industrial automation, etc.
+
+---
+
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-**Good First Issues**: https://github.com/OpenSparX/MasterAgent/labels/good%20first%20issue
-
----
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE)
+**Good first issues:** https://github.com/OpenSparX/MasterAgent/labels/good%20first%20issue
 
 ---
 
@@ -272,134 +388,103 @@ Apache 2.0 — see [LICENSE](LICENSE)
 
 ---
 
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE)
+
+---
+
 <a name="中文"></a>
 
-# 🚀 Sparx
+# Sparx
 
-> **面向边缘设备的高性能AI Agent框架**  
-> 完全运行在Qualcomm NPU上的智能Agent。无云依赖。亚百毫秒延迟。生产可用。
+**构建 100% 本地运行的 AI Agent。** 无需云端 API。无延迟。无隐私泄露。
 
----
-
-## 为什么选择Sparx？
-
-**端侧AI是未来趋势。** 云端Agent存在高延迟、隐私隐患和API成本问题。Sparx将整个Agent执行流程搬到设备端——由Qualcomm NPU驱动。
-
-### 核心优势
-
-- ⚡ **快10-100倍**：NPU加速 + 无网络往返 → 亚百毫秒响应
-- 🔒 **默认隐私保护**：所有数据留在设备本地，零云端暴露
-- 💰 **成本极低**：无API费用，无云基础设施
-- 🚗 **生产可用**：为安全关键场景设计（车载、IoT、机器人）
-- 🛡️ **容错能力强**：WAL恢复 + Unknown终态 — 无静默失败
-
-### vs 云端框架
-
-| 特性 | Sparx | LangChain | AutoGPT |
-|------|-------|-----------|---------|
-| **延迟** | <100ms | 2-5秒 | 5-30秒 |
-| **隐私** | 本地 | 云端 | 云端 |
-| **离线** | ✅ 完全支持 | ❌ 需要API | ❌ 需要API |
-| **成本** | $0 | ~$0.01/次 | ~$0.05/次 |
-| **NPU加速** | ✅ Qualcomm QNN | ❌ | ❌ |
-| **崩溃恢复** | ✅ WAL + Unknown状态 | ❌ | ❌ |
-
----
-
-## 快速开始
-
-### 安装
-
-**方式1：curl（macOS / Linux）**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OpenSparX/MasterAgent/main/scripts/install.sh | sh
-```
-
-**方式2：Homebrew（macOS）**
-```bash
-brew install OpenSparX/masteragent/sparx
-```
-
-**方式3：npm**
-```bash
+# 60 秒安装运行 — 无需特殊硬件
 npm install -g @sparx/cli
+sparx init my-agent && cd my-agent
+sparx demo automotive
 ```
 
-### 30秒演示
+<p align="center">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" />
+  <img src="https://img.shields.io/badge/platform-Qualcomm%20NPU%20%7C%20CPU-green.svg" alt="Platform" />
+  <img src="https://github.com/OpenSparX/MasterAgent/workflows/CI/badge.svg" alt="Build" />
+</p>
+
+---
+
+## 为什么选择端侧 Agent？
+
+云端 Agent 慢、贵、还泄露数据。每次请求都要发到远程 API — 增加 2-5 秒延迟，花费 $0.01-0.05，并将你的提示词发送到第三方服务器。
+
+**Sparx 将整个 Agent 流程搬到本地：**
+- ⚡ **亚百毫秒响应** — 无网络往返
+- 🔒 **默认隐私保护** — 数据不离开设备
+- 💰 **零 API 成本** — 无限使用，每次调用 $0
+- 🚀 **离线可用** — 无需联网
+- 🎯 **NPU 加速** — 可选 Qualcomm 硬件实现 10-100 倍提速
+
+---
+
+## 实际演示
+
+**车载语音助手** — 将自然语言转换为车辆控制：
 
 ```bash
-# 创建新Agent项目
-sparx init my-agent
-cd my-agent
-
-# 运行车载语音助手演示
 sparx demo automotive
 
-# 输出：
-# 🚗 Automotive Voice Assistant Demo
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 用户："打开空调，设置22度，内循环模式"
+# 🚗 车载语音助手
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 
-# 处理中... ⚙️
-# ├─ 意图识别: climate_control ✓
-# ├─ 技能匹配: ac.power, ac.temperature, ac.circulation ✓
-# ├─ MCP服务: vehicle.climate [87ms] ✓
+# 你："打开空调，设置 22 度，内循环模式"
+# 
+# ⚙️  处理中...
+# ├─ 意图: climate_control ✓
+# ├─ 技能: ac.power, ac.temperature, ac.circulation ✓
+# ├─ MCP 服务: vehicle.climate [87ms] ✓
 # └─ 结果: 气候控制已更新 ✓
 # 
-# ⚡ 延迟: 87ms（Qualcomm NPU加速）
+# ⚡ 延迟: 87ms
+```
+
+**执行计划构建器** — 可视化多步骤 Agent 工作流：
+
+```bash
+sparx plan show examples/automotive_assistant/plans/turn-off-ac.yaml
+
+# 计划: turn-off-ac (优先级=p1, 超时=3000ms)
+# 
+# ┌─────────────┐
+# │  read_temp  │  vehicle.climate.getTemperature
+# └──────┬──────┘
+#        │
+#        ▼
+# ┌─────────────┐
+# │   set_ac    │  vehicle.climate.setPower (power: off)
+# └─────────────┘
+# 
+# ✓ 有效 — 2 个节点, 1 个依赖
 ```
 
 ---
 
-## 架构设计
+## Sparx 的独特之处
 
-```mermaid
-graph TB
-    User[👤 用户输入] --> Preprocess[📝 预处理]
-    Preprocess --> Memory[🧠 短期记忆]
-    Memory --> Skills[⚡ 确定性技能]
-    Skills --> Intent[🎯 意图识别]
-    Intent -->|需要推理| NPU[🔥 Qualcomm NPU]
-    Intent -->|基于规则| Direct[直接响应]
-    NPU --> Orchestrator[🎼 任务编排器]
-    Orchestrator --> MCP[🔌 MCP服务]
-    Orchestrator --> WAL[💾 WAL恢复]
-    MCP --> Result[✅ 响应]
-    Direct --> Result
-    WAL --> Result
-    Result --> User
-    
-    style NPU fill:#ff6b6b
-    style WAL fill:#4ecdc4
-    style MCP fill:#ffe66d
-```
+### 1. Unknown 终态（业界首创）
 
-### 核心组件
+**问题：** Agent 在支付过程中崩溃怎么办？
 
-- **预处理层**：输入验证、UTF-8规范化、参数提取
-- **记忆管理**：短期上下文管理（对话历史、用户偏好）
-- **技能系统**：确定性模式匹配 — 规则能闭合时不调用模型
-- **Qualcomm NPU**：通过QNN SDK实现硬件加速推理
-- **MCP服务**：模块化能力（车控、导航、智能家居等）
-- **WAL恢复**：Write-Ahead Logging崩溃恢复 — **业界首创Unknown终态**
-
----
-
-## Sparx的差异化特性
-
-### 1. Unknown终态（Sparx独有）
-
-**问题场景**：Agent在支付过程中崩溃怎么办？
-
-- **LangChain**：重试 → 可能重复扣费 💸💸
-- **AutoGPT**：忽略 → 钱静默丢失 💸❓
-- **Sparx**：进入`UNKNOWN`状态 → 要求显式对账 ✅
+- **LangChain：** 盲目重试 → 可能重复扣费 💸💸
+- **AutoGPT：** 忽略错误 → 钱静默丢失 💸❓
+- **Sparx：** 进入 `UNKNOWN` 状态 → 要求显式对账 ✅
 
 ```bash
 sparx demo crash
 
-# 模拟支付过程中断电
-# 输出：
+# 模拟支付过程中断电：
+# 
 #   ⚠️  payment.charge → side_effect=UNKNOWN
 #   幂等键: a3f1c7e2
 #   金额: 49.99 CNY
@@ -409,55 +494,171 @@ sparx demo crash
 #   为什么重要：
 #   - 重试可能导致重复扣费
 #   - 忽略可能导致钱丢失
-#   - UNKNOWN是唯一诚实的答案
+#   - UNKNOWN 是唯一诚实的答案
 ```
 
-**详细文档**：[docs/WAL_RECOVERY_zh-CN.md](docs/WAL_RECOVERY_zh-CN.md)
+**详细文档：** [WAL 恢复机制](docs/WAL_RECOVERY_zh-CN.md)
 
-### 2. Qualcomm NPU硬件加速
+### 2. 确定性优先路由
 
-Sparx集成Qualcomm QNN SDK实现硬件加速推理：
+**80% 的请求不触碰模型。** Sparx 使用模式匹配和基于规则的技能处理常见任务 — 节省延迟和算力：
 
-- **比CPU快10-100倍**
-- **更低功耗** — 车载/IoT场景关键指标
-- **支持SA8155、SA8295、SA8650**及未来Snapdragon平台
+```yaml
+# skills/climate.yaml
+name: climate_control
+trigger:
+  patterns:
+    - "把空调{power}"
+    - "温度设为{temp}度"
+handler:
+  type: deterministic
+  action: vehicle.climate.setPower
+```
 
-**性能对比**（Qwen2-4B模型）：
+只有模糊或复杂的请求才调用 LLM。大多数请求在微秒级完成路由。
+
+### 3. 可选 NPU 加速
+
+在任何机器（Mac/Linux/Windows）上使用 CPU 推理开发。部署到 Qualcomm NPU 设备时获得 10-100 倍提速：
 
 | 平台 | 后端 | 延迟 | 功耗 |
 |------|------|------|------|
-| Sparx + QNN NPU | HTP (NPU) | **87ms** | **2.3W** |
-| llama.cpp (CPU) | ARM Neon | 1,240ms | 8.1W |
-| LangChain (云端) | OpenAI API | 2,500ms+ | N/A |
+| **开发环境** (CPU) | llama.cpp | ~1,200ms | 8.1W |
+| **生产环境** (NPU) | Qualcomm QNN | **87ms** | **2.3W** |
+| **云端** (API) | OpenAI | 2,500ms+ | N/A |
 
-### 3. 开发者体验
+**支持的 NPU 平台：** SA8155P, SA8295P, SA8650P, SA8775P (车载); Snapdragon 8 Gen 3+ (手机，2026 Q4)
+
+---
+
+## 快速开始
+
+### 安装
+
+**方式 1：npm**（推荐）
+```bash
+npm install -g @sparx/cli
+```
+
+**方式 2：Homebrew**（macOS）
+```bash
+brew install OpenSparX/masteragent/sparx
+```
+
+**方式 3：curl**（macOS / Linux）
+```bash
+curl -fsSL https://raw.githubusercontent.com/OpenSparX/MasterAgent/main/scripts/install.sh | sh
+```
+
+### 创建第一个 Agent
 
 ```bash
-# 初始化项目
+# 1. 初始化新项目
 sparx init my-agent
+cd my-agent
 
 # 生成的项目结构：
 # my-agent/
-# ├── agent.yaml          # Agent配置
+# ├── agent.yaml          # Agent 配置
 # ├── skills/
 # │   └── hello.yaml      # 技能定义
 # └── .sparx/
 #     └── wal.log         # 恢复日志
 
-# 本地运行
+# 2. 添加自定义技能
+sparx add skill weather
+
+# 3. 本地运行（默认使用 CPU 推理）
 sparx run
 
-# 构建和验证执行计划
-sparx plan show plans/turn-off-ac.yaml
-sparx plan export plans/route.yaml --format=mermaid
-
-# 部署到设备
-sparx devices              # 列出已连接设备
-sparx deploy --device 1    # 部署到SA8295开发板
-
-# 交互式会话
-sparx shell
+# 4. 尝试内置演示
+sparx demo automotive     # 语音助手
+sparx demo crash          # WAL 恢复模拟
 ```
+
+### 构建执行计划
+
+```bash
+# 创建 YAML 计划规范
+cat > plans/my-plan.yaml <<EOF
+plan: my-task
+priority: p1
+deadline_ms: 3000
+
+nodes:
+  - id: fetch_data
+    action: api.getData
+
+  - id: process
+    action: logic.transform
+    after: [fetch_data]
+EOF
+
+# 针对编排器验证
+sparx plan validate plans/my-plan.yaml
+
+# 可视化为 Mermaid 图
+sparx plan export plans/my-plan.yaml --format=mermaid
+
+# 导出为 JSON 供程序化使用
+sparx plan export plans/my-plan.yaml --format=json
+```
+
+---
+
+## 架构
+
+```
+┌──────────────┐
+│  用户输入    │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ 预处理 & 记忆                        │
+│ • UTF-8 规范化                       │
+│ • 参数提取                           │
+│ • 对话历史                           │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ 确定性技能（80% 的情况）              │◄── 模式匹配
+│ • 基于规则的路由                      │    （不调用模型）
+│ • 亚毫秒延迟                         │
+└──────┬───────────────────────────────┘
+       │
+       │ ┌─ 如果确定性技能匹配
+       │ │
+       ▼ ▼
+┌──────────────────────────────────────┐
+│ 意图识别（20% 的情况）                │
+│ • LLM 推理（CPU 或 NPU）             │
+│ • 上下文感知路由                      │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ 任务编排器                           │
+│ • 多步骤 DAG 执行                    │
+│ • MCP 服务协调                       │
+│ • WAL 恢复（UNKNOWN 状态）           │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────┐
+│   响应       │
+└──────────────┘
+```
+
+**核心组件：**
+
+- **预处理：** 输入验证、UTF-8 规范化、参数提取
+- **记忆：** 短期上下文（对话历史、用户偏好）
+- **技能：** 确定性模式匹配 — 80% 的请求在此路由
+- **Qualcomm NPU：** 可选硬件加速（比 CPU 快 10-100 倍）
+- **MCP 服务：** 模块化能力（车控、导航、智能家居等）
+- **WAL 恢复：** Write-Ahead Logging，带 UNKNOWN 终态
 
 ---
 
@@ -466,14 +667,14 @@ sparx shell
 ### 车载语音助手
 ```bash
 git clone https://github.com/OpenSparX/MasterAgent.git
-cd examples/automotive_assistant
+cd MasterAgent/v2/examples/automotive_assistant
 sparx run
 
 # 支持的命令：
-# - "打开空调，设置22度"
-# - "导航到最近的充电站"
-# - "播放我最喜欢的歌单"
-# - "给张三打电话"
+# • "打开空调，设置 22 度"
+# • "导航到最近的充电站"
+# • "播放我最喜欢的歌单"
+# • "给张三打电话"
 ```
 
 ### 智能家居控制
@@ -481,10 +682,10 @@ sparx run
 cd examples/smart_home
 sparx run
 
-# 通过MCP服务控制灯光、温度、安防
+# 通过 MCP 服务控制灯光、温度、安防
 ```
 
-### IoT边缘Agent
+### IoT 边缘 Agent
 ```bash
 cd examples/iot_edge
 sparx run --low-power
@@ -494,17 +695,45 @@ sparx run --low-power
 
 ---
 
+## 部署到 NPU 设备
+
+使用 CPU 推理开发 Agent 后，部署到 Qualcomm NPU 硬件用于生产：
+
+```bash
+# 列出已连接设备
+sparx devices
+
+# 部署到设备
+sparx deploy --device 1
+
+# 交互式会话
+sparx shell
+```
+
+**支持的平台：**
+
+| 平台 | SoC | 状态 | 备注 |
+|------|-----|------|------|
+| 车载 | SA8155P | ✅ 支持 | Gen 3 |
+| 车载 | SA8295P | ✅ 支持 | Gen 4 |
+| 车载 | SA8650P | ✅ 支持 | Gen 4+ |
+| 车载 | SA8775P | 🔄 测试中 | Gen 4 |
+| 手机 | Snapdragon 8 Gen 3 | 🔄 计划中 | 2026 Q4 |
+| IoT | QCS6490 | 🔄 计划中 | 2027 |
+
+---
+
 ## 路线图
 
-- [x] 核心Agent框架 (v2.0)
-- [x] Qualcomm QNN NPU集成
-- [x] MCP服务编排
-- [x] WAL恢复 + Unknown终态
-- [x] CLI工具 (init/run/deploy/doctor)
+- [x] 核心 Agent 框架 (v2.0)
+- [x] Qualcomm QNN NPU 集成
+- [x] MCP 服务编排
+- [x] WAL 恢复 + Unknown 终态
+- [x] CLI 工具 (init/run/deploy/doctor/plan)
 - [ ] 多模态输入（摄像头、LiDAR、雷达）— **2026 Q3**
-- [ ] 分布式Agent编排 — **2026 Q4**
+- [ ] 分布式 Agent 编排 — **2026 Q4**
 - [ ] 端云混合模式 — **2027**
-- [ ] 支持更多平台（NVIDIA Jetson、Rockchip）— **2027**
+- [ ] 更多平台（NVIDIA Jetson、Rockchip）— **2027**
 
 ---
 
@@ -512,23 +741,36 @@ sparx run --low-power
 
 - [系统概述](docs/01_系统概述.md) — 架构深度解析
 - [构建和测试](docs/10_构建运行与测试.md) — 编译指南
-- [WAL恢复机制](docs/WAL_RECOVERY_zh-CN.md) — 崩溃恢复原理
-- [MCP服务](docs/MCP_SERVICES_zh-CN.md) — 如何添加自定义能力
-- [Qualcomm NPU](docs/QUALCOMM_NPU_zh-CN.md) — QNN SDK集成指南
+- [WAL 恢复机制](docs/WAL_RECOVERY_zh-CN.md) — 崩溃恢复原理
+- [MCP 服务](docs/MCP_SERVICES_zh-CN.md) — 如何添加自定义能力
+- [Qualcomm NPU](docs/QUALCOMM_NPU_zh-CN.md) — QNN SDK 集成指南
+
+---
+
+## 常见问题
+
+**Q: 我需要 Qualcomm 硬件才能使用 Sparx 吗？**  
+A: 不需要。Sparx 可以在任何 Mac/Linux/Windows 机器上使用 CPU 推理（llama.cpp）运行。Qualcomm NPU 是可选的，用于需要 <100ms 延迟的生产部署。
+
+**Q: 支持哪些模型？**  
+A: 任何 llama.cpp 兼容的 GGUF 模型（Qwen2-4B、Qwen3-4B、Llama、Mistral 等）。NPU 部署需要将模型转换为 QNN 格式。
+
+**Q: 这是生产可用的吗？**  
+A: 是的。v2.0 核心已在车载场景测试，包含 15 个测试套件覆盖崩溃恢复、并发和故障注入。目前已部署在基于 SA8295P 的车辆上。
+
+**Q: WAL 恢复如何工作？**  
+A: Sparx 在执行前记录每个有副作用的操作（API 调用、支付、设备控制）。如果 Agent 在操作中途崩溃，它会以三种可能状态恢复：COMMITTED（成功）、FAILED（错误）或 UNKNOWN（崩溃前状态未知）。UNKNOWN 需要手动对账以防止静默失败。
+
+**Q: 可以用于非车载应用吗？**  
+A: 绝对可以。虽然展示的 demo 是车载的，但 Sparx 适用于任何端侧 Agent 场景：智能家居、IoT、机器人、医疗设备、工业自动化等。
 
 ---
 
 ## 贡献指南
 
-欢迎贡献！请查看[CONTRIBUTING_zh-CN.md](CONTRIBUTING_zh-CN.md)了解详情。
+欢迎贡献！请查看 [CONTRIBUTING_zh-CN.md](CONTRIBUTING_zh-CN.md) 了解详情。
 
-**新手友好Issue**：https://github.com/OpenSparX/MasterAgent/labels/good%20first%20issue
-
----
-
-## 许可证
-
-Apache 2.0 — 详见[LICENSE](LICENSE)
+**新手友好 Issue：** https://github.com/OpenSparX/MasterAgent/labels/good%20first%20issue
 
 ---
 
@@ -540,41 +782,18 @@ Apache 2.0 — 详见[LICENSE](LICENSE)
 
 ---
 
-## Supported Platforms
+## 许可证
 
-| Platform | SoC | Status | Notes |
-|----------|-----|--------|-------|
-| Automotive | SA8155P | ✅ Supported | Gen 3 |
-| Automotive | SA8295P | ✅ Supported | Gen 4 |
-| Automotive | SA8650P | ✅ Supported | Gen 4+ |
-| Automotive | SA8775P | 🔄 Testing | Gen 4 |
-| Mobile | Snapdragon 8 Gen 3 | 🔄 Planned | 2027 |
-| IoT | QCS6490 | 🔄 Planned | 2027 |
+Apache 2.0 — 详见 [LICENSE](LICENSE)
 
 ---
 
-## FAQ
+**Try it now** — install and run in 60 seconds:
+```bash
+npm install -g @sparx/cli && sparx demo automotive
+```
 
-**Q: Do I need Qualcomm QNN SDK to run Sparx?**  
-A: For development and testing, no. Sparx includes a Mock mode using llama.cpp (CPU inference). For production deployment with NPU acceleration, you need QNN SDK from Qualcomm.
-
-**Q: 我需要Qualcomm QNN SDK才能运行Sparx吗？**  
-A: 开发和测试不需要。Sparx包含Mock模式，使用llama.cpp（CPU推理）。生产部署需要NPU加速时，需要从Qualcomm获取QNN SDK。
-
-**Q: What models are supported?**  
-A: Currently tested with Qwen2-4B and Qwen3-4B. Any GGUF model compatible with llama.cpp should work in Mock mode. For NPU, models need to be converted to QNN format.
-
-**Q: 支持哪些模型？**  
-A: 目前测试过Qwen2-4B和Qwen3-4B。Mock模式支持任何llama.cpp兼容的GGUF模型。NPU模式需要将模型转换为QNN格式。
-
-**Q: Is this production-ready?**  
-A: Yes. The v2.0 core has been tested in automotive scenarios with 15 test suites covering crash recovery, concurrency, and fault injection.
-
-**Q: 这是生产可用的吗？**  
-A: 是的。v2.0核心已在车载场景测试，包含15个测试套件覆盖崩溃恢复、并发和故障注入。
-
----
-
-**Star this repo if you believe edge AI is the future! ⭐**
-
-**如果您相信端侧AI是未来，请给我们一个Star！⭐**
+**立即尝试** — 60 秒安装运行：
+```bash
+npm install -g @sparx/cli && sparx demo automotive
+```
