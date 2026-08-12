@@ -465,7 +465,7 @@ sparx plan show examples/automotive_assistant/plans/turn-off-ac.yaml
 ## 🏗️ 架构
 
 <p align="center">
-  <img src="docs/assets/sparx-architecture.png" alt="Sparx 架构图" width="100%" />
+  <img src="docs/images/sparx-architecture.png" alt="Sparx 架构图" width="100%" />
 </p>
 
 每个请求都流经 **确定性优先管线** — 大多数请求根本不触碰 LLM：
