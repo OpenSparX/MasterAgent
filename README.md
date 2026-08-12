@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ Sparx
+# ⚡ OpenSparX AgentOS
 
 **Build AI agents that run 100% on-device.**
 **构建 100% 本地运行的 AI Agent。**
