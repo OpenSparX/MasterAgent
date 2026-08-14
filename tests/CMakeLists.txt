@@ -67,4 +67,49 @@ if(MASTER_AGENT_BUILD_CLI)
     add_test(NAME test_sparx_dag_builder COMMAND test_sparx_dag_builder)
     set_tests_properties(test_sparx_dag_builder PROPERTIES
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+    # Strategic feature tests (v2.1.17+)
+    add_executable(test_orset test_orset.cpp)
+    target_link_libraries(test_orset PRIVATE
+        MasterAgent::Core
+        MasterAgent::SparxRuntimes)
+    target_include_directories(test_orset PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        "${CMAKE_SOURCE_DIR}/cli/include")
+    add_test(NAME test_orset COMMAND test_orset)
+
+    add_executable(test_merkle test_merkle.cpp)
+    target_link_libraries(test_merkle PRIVATE
+        MasterAgent::Core
+        MasterAgent::SparxRuntimes)
+    target_include_directories(test_merkle PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        "${CMAKE_SOURCE_DIR}/cli/include")
+    add_test(NAME test_merkle COMMAND test_merkle)
+
+    add_executable(test_embedding test_embedding.cpp)
+    target_link_libraries(test_embedding PRIVATE
+        MasterAgent::Core
+        MasterAgent::SparxRuntimes)
+    target_include_directories(test_embedding PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        "${CMAKE_SOURCE_DIR}/cli/include")
+    add_test(NAME test_embedding COMMAND test_embedding)
+
+    add_executable(test_integration_speculation test_integration_speculation.cpp)
+    target_link_libraries(test_integration_speculation PRIVATE
+        MasterAgent::Core
+        MasterAgent::SparxRuntimes)
+    target_include_directories(test_integration_speculation PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        "${CMAKE_SOURCE_DIR}/cli/include")
+    add_test(NAME test_integration_speculation COMMAND test_integration_speculation)
+
+    add_executable(bench_strategic bench_strategic.cpp)
+    target_link_libraries(bench_strategic PRIVATE
+        MasterAgent::Core
+        MasterAgent::SparxRuntimes)
+    target_include_directories(bench_strategic PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        "${CMAKE_SOURCE_DIR}/cli/include")
 endif()

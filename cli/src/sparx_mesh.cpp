@@ -825,6 +825,25 @@ bool CrdtStateSync::merge(const CrdtOperation& op) {
 
     entry.last_modified = std::max(entry.last_modified, op.timestamp);
     op_log_.push_back(op);
+
+    // Auto-compact op_log when it exceeds 10,000 entries
+    // Keep only operations from the last 1,000 timestamps
+    constexpr size_t MAX_OP_LOG_SIZE = 10000;
+    if (op_log_.size() > MAX_OP_LOG_SIZE) {
+        // Find the 9000th-oldest timestamp (keep 1000 most recent)
+        std::vector<int64_t> timestamps;
+        timestamps.reserve(op_log_.size());
+        for (const auto& logged_op : op_log_) {
+            timestamps.push_back(logged_op.timestamp);
+        }
+        std::nth_element(timestamps.begin(),
+                         timestamps.begin() + (timestamps.size() - 1000),
+                         timestamps.end());
+        int64_t cutoff = timestamps[timestamps.size() - 1000];
+
+        compactInternal(cutoff);
+    }
+
     return true;
 }
 
@@ -857,6 +876,10 @@ std::vector<CrdtOperation> CrdtStateSync::operationsSince(
 
 void CrdtStateSync::compact(std::int64_t before_timestamp) {
     std::lock_guard<std::mutex> lock(mutex_);
+    compactInternal(before_timestamp);
+}
+
+void CrdtStateSync::compactInternal(std::int64_t before_timestamp) {
     op_log_.erase(
         std::remove_if(op_log_.begin(), op_log_.end(),
                        [before_timestamp](const CrdtOperation& op) {
@@ -1372,25 +1395,25 @@ MerkleDiff MerkleAntiEntropy::compare(const MerkleDigest& remote) const {
     for (uint32_t level = 1; level <= tree_depth_; ++level) {
         if (level >= remote.level_hashes.size()) break;
 
-        const auto& local_level = (level < tree_depth_ + 1)
-            ? [&]() -> const std::vector<std::string>& {
-                // Generate local level hashes from tree
-                static std::vector<std::string> local_h;
-                local_h.clear();
-                std::vector<const MerkleNode*> nodes = {root_.get()};
-                for (uint32_t l = 0; l < level; ++l) {
-                    std::vector<const MerkleNode*> next;
-                    for (const auto* n : nodes) {
-                        for (const auto& c : n->children) {
-                            next.push_back(c.get());
-                        }
+        // Collect local hashes at this level by BFS traversal
+        std::vector<std::string> local_level_storage;
+        {
+            std::vector<const MerkleNode*> nodes = {root_.get()};
+            for (uint32_t l = 0; l < level; ++l) {
+                std::vector<const MerkleNode*> next;
+                for (const auto* n : nodes) {
+                    for (const auto& c : n->children) {
+                        next.push_back(c.get());
                     }
-                    nodes = std::move(next);
                 }
-                for (const auto* n : nodes) local_h.push_back(n->hash);
-                return local_h;
-            }()
-            : remote.level_hashes[level];  // unreachable
+                nodes = std::move(next);
+            }
+            local_level_storage.reserve(nodes.size());
+            for (const auto* n : nodes) {
+                local_level_storage.push_back(n->hash);
+            }
+        }
+        const auto& local_level = local_level_storage;
 
         const auto& remote_level = remote.level_hashes[level];
         size_t count = std::min(local_level.size(), remote_level.size());

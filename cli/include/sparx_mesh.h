@@ -352,6 +352,9 @@ private:
     /// Generate a globally-unique tag: "deviceId#seq"
     std::string generateTag();
 
+    /// Internal compaction (caller must hold mutex_).
+    void compactInternal(std::int64_t before_timestamp);
+
     // CRDT merge functions
     std::string mergeGCounter(const std::string& local,
                               const std::string& remote) const;
