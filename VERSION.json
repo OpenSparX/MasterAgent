@@ -1,9 +1,9 @@
 {
   "product": "MasterAgent-v2",
-  "version": "2.0.0",
+  "version": "2.2.1",
   "api_namespace": "master_agent",
   "cmake_target": "MasterAgent::Core",
-  "delivery_date": "2026-07-31",
+  "delivery_date": "2026-08-15",
   "model_backend": "MOCK",
   "default_topology": "single-process",
   "ipc_default": false

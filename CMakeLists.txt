@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(MasterAgent VERSION 2.0.0 LANGUAGES CXX)
+project(MasterAgent VERSION 2.2.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -241,6 +241,8 @@ if(MASTER_AGENT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+add_subdirectory(eval)
 
 install(TARGETS master_agent_core memory_short_term_core
     EXPORT MasterAgentTargets

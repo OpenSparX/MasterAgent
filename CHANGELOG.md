@@ -3,6 +3,35 @@
 All notable changes to Sparx are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.2.1] — 2026-08-15
+
+### Fixed
+- **AU semantic evaluation**: Added missing `TemporalOp::AU` case in formal verifier
+  (`cli/src/sparx_formal_verify.cpp`). The Until operator now evaluates correctly:
+  A[φ U ψ] returns true if ψ holds now, or if φ holds and all successors satisfy AU.
+  Completes CTL* temporal logic support.
+- **Speculation exponential decay**: Old patterns now fade with time-based weighting
+  (`cli/src/sparx_speculative.cpp`). Changed from integer counts to float weights
+  using `exp(-0.1 * age_days)`. Recent observations have higher influence, preventing
+  noise accumulation from stale patterns.
+- **ORSet O(n²) → O(n log n) optimization**: Replaced string parsing with structured
+  merge operations in `cli/src/sparx_mesh.cpp`. Tag parsing uses single-pass instead
+  of nested `getline`, map merge uses direct set operations, and tombstone subtraction
+  uses `std::set_difference`. Significantly faster for large CRDTs.
+
+## [2.2.0] — 2026-08-10
+
+### Added
+- Comprehensive evaluation framework for all strategic features (speculative execution,
+  agent mesh, formal verification, on-device learning, constrained decoding)
+- Technical report documenting evaluation methodology and results analysis
+  (`docs/TECHNICAL_REPORT.md`)
+- System design rationale for on-device execution (`docs/WHY_ON_DEVICE.md`)
+- Reproducible benchmark suite with synthetic workloads (`eval/run_all.sh`)
+
+### Changed
+- README updated with Evaluation Results, Technical Report, and Reproducing Results sections
+
 ## [2.1.14] — 2026-08-10
 
 ### Fixed
