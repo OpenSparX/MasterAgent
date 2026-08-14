@@ -35,6 +35,7 @@
 
 #include "sparx_commands.h"
 #include "sparx_dag_builder.h"
+#include "sparx_formal_verify.h"
 
 #include "master_agent/agent_dispatch/agent_dispatch.h"
 #include "master_agent/atomic_service/atomic_service.h"
@@ -237,16 +238,26 @@ void printUsage() {
   Usage:
     sparx plan show <plan.yaml>       Build, validate, and display the plan
     sparx plan validate <plan.yaml>   Check whether the plan passes validation
+    sparx plan verify <plan.yaml>     Formal verification (CTL model checking)
     sparx plan export <plan.yaml>     Export the plan to stdout
 
   Options:
     --format=text|json|mermaid   Output format (default: text)
+    --property=<name>            Verify only specific property (for verify)
 
   The plan spec is a YAML file describing nodes, dependencies, and priority.
   See examples/automotive_assistant/plans/ for the format.
 
+  Built-in verification properties:
+    auth-before-destructive    No destructive op without auth
+    no-conflicting-destructive No concurrent destructive on same resource
+    all-nodes-terminate        Every node eventually completes or fails
+    no-resource-deadlock       No circular resource waits
+    data-flow-integrity        No backward data flow
+
   Example:
     sparx plan show plans/turn-off-ac.yaml
+    sparx plan verify plans/route.yaml
     sparx plan export plans/route.yaml --format=mermaid
 
 )" << std::endl;
@@ -261,7 +272,8 @@ int cmd_plan(const std::vector<std::string>& args) {
     }
 
     std::string subcmd = args[0];
-    if (subcmd != "show" && subcmd != "validate" && subcmd != "export") {
+    if (subcmd != "show" && subcmd != "validate" &&
+        subcmd != "verify" && subcmd != "export") {
         std::cerr << "  unknown plan subcommand: " << subcmd << "\n"
                   << "  try: sparx plan show <file.yaml>\n";
         return 1;
@@ -270,11 +282,14 @@ int cmd_plan(const std::vector<std::string>& args) {
     // Find the file arg and format flag
     std::string file_path;
     std::string format = "text";
+    std::vector<std::string> verify_properties;
     for (size_t i = 1; i < args.size(); ++i) {
         if (args[i].rfind("--format=", 0) == 0) {
             format = args[i].substr(9);
         } else if (args[i] == "--format" && i + 1 < args.size()) {
             format = args[++i];
+        } else if (args[i].rfind("--property=", 0) == 0) {
+            verify_properties.push_back(args[i].substr(11));
         } else if (file_path.empty()) {
             file_path = args[i];
         }
@@ -299,6 +314,41 @@ int cmd_plan(const std::vector<std::string>& args) {
     // Build
     auto builder = buildFromSpec(spec);
     auto [dag, admission] = builder.build();
+
+    // Formal verification via bounded model checking (CTL properties).
+    if (subcmd == "verify") {
+        // Convert PlanSpec nodes to formal::PlanNode
+        std::vector<formal::PlanNode> formal_nodes;
+        for (const auto& n : spec.nodes) {
+            formal::PlanNode fn;
+            fn.id = n.id;
+            fn.tool_name = n.action;
+            fn.deps = n.after;
+            // Heuristic: detect destructive operations by action name patterns
+            fn.is_destructive = (n.action.find("delete") != std::string::npos ||
+                                 n.action.find("remove") != std::string::npos ||
+                                 n.action.find("drop") != std::string::npos ||
+                                 n.action.find("setPower") != std::string::npos);
+            fn.is_idempotent = (n.action.find("get") != std::string::npos ||
+                                n.action.find("read") != std::string::npos);
+            fn.requires_auth = fn.is_destructive;  // destructive → needs auth
+            fn.timeout_ms = spec.deadline_ms;
+            formal_nodes.push_back(fn);
+        }
+
+        formal::VerifierConfig vcfg;
+        vcfg.properties = verify_properties;
+        vcfg.generate_counterexamples = true;
+        formal::PlanVerifier verifier(vcfg);
+        auto verification = verifier.verify(formal_nodes);
+
+        if (format == "json") {
+            std::cout << verification.certificate();
+        } else {
+            std::cout << verification.report();
+        }
+        return verification.all_satisfied ? 0 : 1;
+    }
 
     // Validate against a real orchestrator instance.
     using namespace master_agent;

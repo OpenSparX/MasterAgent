@@ -37,6 +37,8 @@ static void printUsage() {
     shell             Interactive session with a deployed agent
     plan              Build, validate, and visualize execution plans
     trace             Inspect runtime execution traces (TaskEvent records)
+    learn             On-device continual learning (corrections → personalized adapter)
+    mesh              Agent Mesh Protocol (peer discovery, routing, state sync)
 
   Options:
     --help, -h        Show this help
@@ -134,6 +136,8 @@ int main(int argc, char* argv[]) {
     if (cmd == "shell") return sparx::cmd_shell(args);
     if (cmd == "plan") return sparx::cmd_plan(args);
     if (cmd == "trace") return sparx::cmd_trace(args);
+    if (cmd == "learn") return sparx::cmd_learn(args);
+    if (cmd == "mesh") return sparx::cmd_mesh(args);
 
     std::cerr << "  unknown command: " << cmd << "\n";
     std::cerr << "  run `sparx --help` for available commands\n";

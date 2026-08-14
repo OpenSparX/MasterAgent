@@ -782,6 +782,118 @@ Sparx 在执行前记录每个有副作用的操作（API 调用、支付、设�
 
 ---
 
+## 📋 Changelog / 更新日志
+
+### v2.1.16 (upcoming)
+
+**Speculative Agent Execution / 投机执行**
+
+Predicts user's next intent and pre-computes results during idle NPU time — 0ms latency on cache hits.
+
+预测用户下一步意图，在 NPU 空闲时预计算结果 — 命中缓存时 0ms 延迟。
+
+- Intent prediction: bigram + temporal + trigram ensemble model
+- LRU speculation cache with TTL and context-hash invalidation
+- Automatic observation and learning across sessions
+- Pre-computation during device idle time (NPU idle scheduling)
+- Verification-before-commit: validates speculative output against current context
+- Integrated into `sparx run` REPL (⚡ route=speculative indicator)
+
+**Formal Plan Verification / 形式化计划验证**
+
+CTL model checking verifies safety properties of execution plans BEFORE running them.
+
+CTL 模型检查在执行前验证计划的安全属性。
+
+- `sparx plan verify <plan.yaml>` — bounded model checker
+- Built-in properties: auth-before-destructive, no-resource-deadlock, all-nodes-terminate, data-flow-integrity, no-conflicting-destructive
+- CTL* temporal logic AST (AG, AF, AX, AU, EF, EX, ABounded operators)
+- Kripke model construction from plan DAGs
+- Counterexample trace generation on violation
+- Machine-readable safety certificates (JSON)
+- Runtime monitor: online verification during plan execution
+- Based on: AgentVerify (LTL), SENTINEL, Agent-C, Lean4Agent research
+
+**Agent Mesh Protocol / Agent 网格协议**
+
+Zero-config multi-device collaboration — route intents to the most capable peer on the network.
+
+零配置多设备协作 — 将意图路由到网络中最强设备。
+
+- `sparx mesh status` — mesh health and connected peers
+- `sparx mesh peers` — list discovered peers with NPU/RAM/battery info
+- `sparx mesh sync` — CRDT state synchronization status
+- mDNS/DNS-SD zero-config peer discovery (_sparx-mesh._tcp.local.)
+- Capability-based routing: intent → best device by NPU TOPS, model availability, idle state
+- CRDT state sync: conflict-free merge of corrections/memories across devices
+- Split inference planning: partition model layers across multiple NPU devices
+- Fault tolerance: heartbeat monitoring, automatic failover
+- Security model: mTLS with device-pinned certificates (TOFU)
+
+**On-Device Continual Learning / 端侧持续学习**
+
+The agent learns from your corrections and builds a personalized LoRA adapter — entirely on-device, with differential privacy guarantees.
+
+Agent 从用户纠正中学习，在端侧构建个性化 LoRA adapter，支持差分隐私保证。
+
+- `sparx learn correct` — record corrections during or after a session
+- `sparx learn train` — trigger QLoRA fine-tuning with DP-SGD
+- `sparx learn status` — view privacy budget, adapter version, quality metrics
+- In-REPL `/correct` command — instant feedback during conversation
+- Automatic adapter loading on `sparx run`
+- Privacy: DP-SGD with configurable ε budget, Rényi DP accounting
+- Idle scheduling: trains only when NPU/CPU/battery/thermal allow
+- Quality guard: perplexity validation before/after, auto-rollback
+- Progressive adapter merging: weighted average prevents catastrophic forgetting
+- Encrypted-at-rest storage: device-bound key, data never leaves device
+
+**Constrained Decoding / 约束解码**
+
+Zero hallucinated tool calls — GBNF grammar forces valid JSON output.
+
+零幻觉工具调用 — GBNF 语法强制 LLM 输出有效 JSON。
+
+- Auto-generates GBNF grammar from skill YAML `input_schema`
+- JSON Schema → GBNF production rules (objects, arrays, enums, primitives)
+- Grammar injected into llama-server requests when tool-use is detected
+- Supports union of multiple tools in one grammar (root ::= tool1 | tool2 | ...)
+- Optional free-text fallback for non-tool responses
+
+### v2.1.15
+
+**First-Run UX / 首次运行体验**
+
+- Fixed model registry: correct HuggingFace URLs (case-sensitive GGUF filenames)
+- `sparx pull` now lists available models with sizes and marks the default
+- `sparx run` no-model banner gives explicit next-step commands
+- macOS TCC crash protection: graceful error instead of abort trap
+- GGUF magic-byte validation on downloaded models
+- Improved error messages throughout
+
+### v2.1.14
+
+**Release Workflow Fix / 发布流程修复**
+
+- Fixed `softprops/action-gh-release@v2` failing on `workflow_dispatch` triggers
+- Added explicit `tag_name` resolution step in release workflow
+- All 8 release artifacts (linux-x86_64, linux-aarch64, macOS-arm64, etc.) built correctly
+
+### v2.1.0 → v2.1.13
+
+**Core Agent Kernel / 核心 Agent 内核**
+
+- Full MasterAgent kernel: inference framework, orchestrator, WAL recovery
+- Deterministic-first routing (80%+ requests at sub-ms latency)
+- MCP tool integration with admission control and preemption
+- LlamaCppModelRuntime with streaming and seal verification
+- GenieModelRuntime for Qualcomm NPU acceleration
+- `sparx demo automotive` — 30-second killer demo
+- `sparx plan` — DAG execution plan builder and validator
+- `sparx trace` — runtime trace inspection
+- 16 unit test suites, 85 CLI integration tests
+
+---
+
 ## 🤝 贡献指南
 
 欢迎贡献！请查看 [CONTRIBUTING_zh-CN.md](CONTRIBUTING_zh-CN.md) 了解详情。

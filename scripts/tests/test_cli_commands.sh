@@ -346,6 +346,44 @@ OUT_STUB=$(printf 'tell me about quantum computing\n' | "$SPARX" run 2>&1)
 echo "$OUT_STUB" | grep -q "sparx pull" && t_pass "stub response mentions pull" \
   || t_fail "stub response missing pull hint"
 
+echo "=== 23. sparx learn shows help with no args ==="
+OUT_LEARN=$("$SPARX" learn 2>&1)
+check "$?" "0" "learn with no args exits 0"
+echo "$OUT_LEARN" | grep -q "correct" && t_pass "learn help lists correct subcommand" \
+  || t_fail "learn help missing correct"
+echo "$OUT_LEARN" | grep -q "status" && t_pass "learn help lists status subcommand" \
+  || t_fail "learn help missing status"
+echo "$OUT_LEARN" | grep -q "on-device" && t_pass "learn help mentions on-device" \
+  || t_fail "learn help missing on-device context"
+
+echo "=== 24. sparx learn correct requires arguments ==="
+OUT_CORRECT=$("$SPARX" learn correct 2>&1)
+check "$?" "1" "learn correct with no args exits 1"
+echo "$OUT_CORRECT" | grep -q "usage" && t_pass "learn correct shows usage" \
+  || t_fail "learn correct missing usage hint"
+
+echo "=== 25. sparx learn status works without agent.yaml ==="
+OUT_STATUS=$(cd /tmp && "$SPARX" learn status 2>&1)
+check "$?" "0" "learn status exits 0"
+echo "$OUT_STATUS" | grep -q "training pairs" && t_pass "learn status shows pair count" \
+  || t_fail "learn status missing pair count"
+
+echo "=== 26. sparx learn correct records a pair ==="
+LEARN_TMPDIR=$(mktemp -d)
+cd "$LEARN_TMPDIR"
+cat > agent.yaml <<'EOF'
+name: test-learn-agent
+skills: []
+EOF
+OUT_PAIR=$("$SPARX" learn correct "turn on AC" "Setting AC to 22°C" 2>&1)
+check "$?" "0" "learn correct exits 0"
+echo "$OUT_PAIR" | grep -q "correction recorded" && t_pass "learn correct confirms save" \
+  || t_fail "learn correct missing confirmation"
+echo "$OUT_PAIR" | grep -q "/5" && t_pass "learn correct shows pair count" \
+  || t_fail "learn correct missing count"
+rm -rf "$LEARN_TMPDIR"
+cd "$REPO_ROOT"
+
 echo
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

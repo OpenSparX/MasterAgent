@@ -18,7 +18,14 @@ set(SPARX_SOURCES
     src/cmd_shell.cpp
     src/cmd_plan.cpp
     src/cmd_trace.cpp
+    src/cmd_learn.cpp
     src/sparx_trace.cpp
+    src/sparx_learning.cpp
+    src/sparx_constrained_decode.cpp
+    src/sparx_speculative.cpp
+    src/sparx_formal_verify.cpp
+    src/sparx_mesh.cpp
+    src/cmd_mesh.cpp
 )
 
 # The runtime adapters are a library so tests can link them without pulling in

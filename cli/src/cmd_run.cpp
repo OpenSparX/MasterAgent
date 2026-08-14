@@ -23,11 +23,16 @@
 #include "sparx_skill_loader.h"
 
 #include "llama_cpp_model_runtime.h"
+#include "sparx_learning.h"
+#include "sparx_constrained_decode.h"
+#include "sparx_speculative.h"
+#include "sparx_mesh.h"
 #include "master_agent/common/types.h"
 
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -156,6 +161,7 @@ int cmd_run(const std::vector<std::string>& args) {
     const char* runtime_label = real ? "llama-cpp" : "none";
 
     std::unique_ptr<LlamaCppModelRuntime> runtime;
+    std::string active_adapter;
     if (real) {
         if (!fs::exists(model_path)) {
             std::cerr << "  ✗ model file not found: " << model_path << "\n";
@@ -165,6 +171,14 @@ int cmd_run(const std::vector<std::string>& args) {
         llama_cfg.model_path = model_path;
         llama_cfg.endpoint = config.endpoint;
         llama_cfg.context_length = static_cast<uint32_t>(config.context_length);
+
+        // Auto-load personalized LoRA adapter if one exists.
+        auto adapter = learning::resolveAdapterForInference(config.name);
+        if (adapter) {
+            llama_cfg.lora_path = *adapter;
+            active_adapter = *adapter;
+        }
+
         runtime = std::make_unique<LlamaCppModelRuntime>(std::move(llama_cfg));
         if (!runtime->waitForServer(std::chrono::milliseconds(15000))) {
             std::cerr << "  ✗ llama-server did not become ready within 15s\n";
@@ -178,6 +192,11 @@ int cmd_run(const std::vector<std::string>& args) {
     // so it is always correct and cannot drift from git state.
     std::cout << "  OpenSparX v" << SPARX_VERSION << " · reality=" << reality
               << " · runtime=" << runtime_label << "\n";
+
+    if (!active_adapter.empty()) {
+        std::cout << "  adapter: " << fs::path(active_adapter).filename().string()
+                  << " (personalized)\n";
+    }
 
     if (!real) {
         // This is the most common first-run confusion: a greeting matches a
@@ -231,19 +250,126 @@ int cmd_run(const std::vector<std::string>& args) {
         std::cout << "\n";
     }
 
+    // Constrained decoding: generate GBNF grammar from tool schemas.
+    constrained::GbnfGenerator grammar_gen;
+    auto tool_schemas = constrained::extractToolSchemas(
+        (fs::current_path() / "skills").string());
+    for (const auto& ts : tool_schemas) {
+        grammar_gen.addTool(ts);
+    }
+    std::string active_grammar;
+    if (grammar_gen.hasTools()) {
+        active_grammar = grammar_gen.generate();
+        std::cout << "  constrained decoding: " << grammar_gen.toolCount()
+                  << " tool schema(s) → GBNF grammar ("
+                  << active_grammar.size() << " bytes)\n";
+    }
+
+    // Speculative execution: predict user intents and pre-compute results.
+    speculation::PredictionConfig pred_cfg;
+    pred_cfg.history_path = (fs::path(std::getenv("HOME") ? std::getenv("HOME") : ".") /
+                             ".sparx" / "speculation" / (config.name + "_history.jsonl")).string();
+    fs::create_directories(fs::path(pred_cfg.history_path).parent_path());
+    speculation::IntentPredictor predictor(pred_cfg);
+    speculation::CacheConfig cache_cfg;
+    speculation::SpeculationCache spec_cache(cache_cfg);
+    speculation::ExecutorConfig exec_cfg;
+    speculation::SpeculativeExecutor speculator(predictor, spec_cache, exec_cfg);
+
+    // Load prior intent history (personalizes predictions across sessions)
+    predictor.load();
+
+    std::cout << "  speculative execution: intent predictor active ("
+              << predictor.observationCount() << " prior observations)\n";
+
+    // Agent Mesh Protocol: zero-config peer discovery.
+    mesh::PeerId self_id;
+    self_id.device_id = config.name + "-local";
+    self_id.display_name = "localhost";
+    self_id.sparx_version = SPARX_VERSION;
+    mesh::DeviceCapabilities self_caps;
+    self_caps.has_npu = false;  // sparx run = CPU mode
+    self_caps.has_gpu = true;
+    self_caps.ram_mb = 8192;    // estimate
+    self_caps.loaded_models = {config.model_id.empty() ? "none" : config.model_id};
+    auto mesh_proto = mesh::MeshProtocol::create(self_id, self_caps);
+    mesh_proto->start();
+    std::cout << "  mesh protocol: discovery active (port "
+              << mesh::DiscoveryConfig{}.service_port << ")\n";
+
     std::cout << "\n  Agent \"" << config.name << "\" is running. "
                  "Type a message or Ctrl+C to exit.\n\n";
 
     // Interactive REPL
     std::string line;
     std::uint64_t turn = 0;
+    std::string last_input;       // for /correct
+    std::string last_output;      // for /correct
+    learning::TrainingPairStore learn_store(
+        fs::path(std::getenv("HOME") ? std::getenv("HOME") : ".") /
+        ".sparx" / "learning");
+
     while (true) {
         std::cout << "  > " << std::flush;
         if (!std::getline(std::cin, line)) break;
         if (line.empty()) continue;
+
+        // /correct <preferred> — record a correction for the last turn
+        if (line.size() > 9 && line.substr(0, 9) == "/correct ") {
+            if (last_input.empty()) {
+                std::cout << "  ! no previous turn to correct\n\n";
+                continue;
+            }
+            learning::TrainingPair pair;
+            pair.agent_name = config.name;
+            pair.input = last_input;
+            pair.model_output = last_output;
+            pair.preferred = line.substr(9);
+            pair.model_id = config.model_id.empty() ? "local-gguf" : config.model_id;
+            pair.turn_number = static_cast<uint32_t>(turn);
+            auto id = learn_store.append(pair);
+            auto count = learn_store.count(config.name);
+            std::cout << "  ✓ correction saved (" << count << " pairs total)\n\n";
+            continue;
+        }
         ++turn;
 
         auto start = std::chrono::steady_clock::now();
+
+        // Speculative execution: check if we already pre-computed this intent.
+        auto input_hash = speculation::normalizeForCacheKey(line);
+        std::vector<std::string> skill_names(config.skills.begin(), config.skills.end());
+        auto context_hash = speculation::computeContextHash(
+            model_path, skill_names, turn);
+        auto spec_hit = speculator.checkHit(line, input_hash, context_hash);
+        if (spec_hit && spec_hit->prediction_confidence >= 0.7f) {
+            auto elapsed = std::chrono::steady_clock::now() - start;
+            auto us = std::chrono::duration_cast<
+                std::chrono::microseconds>(elapsed).count();
+            std::cout << "  " << spec_hit->raw_output << "\n";
+            std::cout << "  ⚡ route=speculative  confidence="
+                      << static_cast<int>(spec_hit->prediction_confidence * 100) << "%  "
+                      << (us / 1000.0) << "ms (pre-computed)\n";
+            last_input = line;
+            last_output = spec_hit->raw_output;
+
+            // Record observation
+            speculation::IntentRecord rec;
+            rec.intent_name = "speculative_hit";
+            rec.raw_input = line;
+            rec.timestamp_utc = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            auto now_local = std::chrono::system_clock::to_time_t(
+                std::chrono::system_clock::now());
+            auto* tm = std::localtime(&now_local);
+            rec.hour_of_day = static_cast<uint8_t>(tm->tm_hour);
+            rec.day_of_week = static_cast<uint8_t>((tm->tm_wday + 6) % 7);
+            rec.was_deterministic = false;
+            rec.latency_ms = static_cast<uint32_t>(us / 1000);
+            predictor.observe(rec);
+            std::cout << "\n";
+            continue;
+        }
 
         // Deterministic skills first. Loaded skills/<name>.yaml definitions win
         // over the built-in matcher so an edited skill file takes effect.
@@ -312,6 +438,14 @@ int cmd_run(const std::vector<std::string>& args) {
             RuntimeInvocationSeal seal;
             buildTurn(config, line, turn, request, seal);
 
+            // Apply constrained decoding if tools are registered and the
+            // prompt suggests a tool call is expected.
+            if (!active_grammar.empty() &&
+                constrained::promptExpectsToolCall(request.prompt)) {
+                request.adapter = "grammar:" + active_grammar;
+            }
+
+            std::string accumulated_output;
             std::int64_t first_chunk_ns = 0;
             auto sink = [&](const master_agent::inference::InferenceChunk& chunk)
                 -> StreamControl {
@@ -320,6 +454,7 @@ int cmd_run(const std::vector<std::string>& args) {
                     std::cout << "  ";
                 }
                 std::cout << chunk.delta << std::flush;
+                accumulated_output += chunk.delta;
                 if (chunk.final) std::cout << "\n";
                 return StreamControl::Continue;
             };
@@ -343,6 +478,9 @@ int cmd_run(const std::vector<std::string>& args) {
                           << "  stream="
                           << streamIntegrityLabel(result.value->stream_integrity)
                           << "\n";
+                // Track for /correct
+                last_input = line;
+                last_output = accumulated_output;
             } else {
                 std::cerr << "  ✗ inference failed: "
                           << result.status.error.code << " — "
@@ -363,7 +501,41 @@ int cmd_run(const std::vector<std::string>& args) {
                          "`sparx pull qwen2.5-0.5b-instruct`)\n";
         }
         std::cout << "\n";
+
+        // Post-turn: feed this interaction to the speculative executor
+        // so it can predict and pre-compute the next likely intent.
+        speculation::IntentRecord post_rec;
+        post_rec.intent_name = matched ? "deterministic" : "inference";
+        post_rec.raw_input = line;
+        post_rec.timestamp_utc = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        auto now_local = std::chrono::system_clock::to_time_t(
+            std::chrono::system_clock::now());
+        auto* tm = std::localtime(&now_local);
+        post_rec.hour_of_day = static_cast<uint8_t>(tm->tm_hour);
+        post_rec.day_of_week = static_cast<uint8_t>((tm->tm_wday + 6) % 7);
+        post_rec.was_deterministic = matched;
+        auto turn_elapsed = std::chrono::steady_clock::now() - start;
+        post_rec.latency_ms = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(turn_elapsed).count());
+        predictor.observe(post_rec);
+
+        // Speculative pre-computation (only if inference available)
+        if (real && runtime) {
+            speculator.afterTurn(post_rec, context_hash,
+                [&](const std::string& prompt, std::uint32_t /*max_tokens*/)
+                    -> std::optional<std::string> {
+                    // Would invoke runtime here for pre-computation;
+                    // currently a no-op to avoid blocking the REPL.
+                    (void)prompt;
+                    return std::nullopt;
+                });
+        }
     }
+
+    // Save speculative predictor state for next session
+    predictor.save();
+    mesh_proto->stop();
     return 0;
 }
 

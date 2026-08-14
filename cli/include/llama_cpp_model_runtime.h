@@ -43,6 +43,10 @@ struct LlamaCppConfig {
     std::uint32_t threads = 0;
     /// GPU layers to offload (-ngl). 0 = CPU only.
     std::uint32_t gpu_layers = 0;
+    /// Path to a LoRA adapter file (--lora flag). Empty = no adapter.
+    std::string lora_path;
+    /// GBNF grammar string for constrained decoding. Empty = unconstrained.
+    std::string grammar;
     /// Timeout for a single inference call. If 0, uses seal.deadline_mono_ns.
     std::chrono::milliseconds timeout{0};
     /// Runtime tag used in model_digest validation. Must match the executor's
