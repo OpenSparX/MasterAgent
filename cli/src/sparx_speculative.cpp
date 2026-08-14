@@ -46,21 +46,33 @@ void IntentPredictor::observe(const IntentRecord& record) {
     // Update canonical phrasing (most recent wins)
     canonical_phrasing_[record.intent_name] = record.raw_input;
 
-    // Update bigram transitions
+    // Exponential decay factor: λ = 0.1, age in days
+    // Older observations count less: weight = exp(-0.1 * age_days)
+    const double decay_lambda = 0.1;
+    int64_t now = record.timestamp_utc;
+
+    // Update bigram transitions with decay
     if (!recent_history_.empty()) {
         const auto& prev = recent_history_.back().intent_name;
-        transitions_[prev][record.intent_name]++;
 
-        // Temporal bigram
-        temporal_transitions_[record.hour_of_day][prev][record.intent_name]++;
+        // Compute age-weighted increment
+        int64_t age_seconds = now - recent_history_.back().timestamp_utc;
+        double age_days = static_cast<double>(age_seconds) / 86400.0;
+        float weight = static_cast<float>(std::exp(-decay_lambda * age_days));
 
-        // Trigram
+        // Store as float counts (fractional weights)
+        transitions_weighted_[prev][record.intent_name] += weight;
+
+        // Temporal bigram with decay
+        temporal_transitions_weighted_[record.hour_of_day][prev][record.intent_name] += weight;
+
+        // Trigram with decay
         if (recent_history_.size() >= 2) {
             auto it = recent_history_.rbegin();
             const auto& prev1 = it->intent_name;
             ++it;
             const auto& prev2 = it->intent_name;
-            trigrams_[trigramKey(prev2, prev1)][record.intent_name]++;
+            trigrams_weighted_[trigramKey(prev2, prev1)][record.intent_name] += weight;
         }
     }
 
@@ -81,53 +93,51 @@ std::vector<IntentPrediction> IntentPredictor::predict(
         std::chrono::duration_cast<std::chrono::hours>(
             std::chrono::system_clock::now().time_since_epoch()).count() % 24);
 
-    // Collect candidates with scores from all three models
+    // Collect candidates with scores from all three models (using weighted counts)
     std::map<std::string, float> scores;
 
-    // Level 1: Bigram P(B|A)
-    auto bigram_it = transitions_.find(current_intent);
-    if (bigram_it != transitions_.end()) {
-        uint32_t total = 0;
-        for (const auto& [_, count] : bigram_it->second) total += count;
-        if (total > 0) {
-            for (const auto& [intent, count] : bigram_it->second) {
-                float p = static_cast<float>(count) / static_cast<float>(total);
+    // Level 1: Bigram P(B|A) with exponential decay
+    auto bigram_it = transitions_weighted_.find(current_intent);
+    if (bigram_it != transitions_weighted_.end()) {
+        float total = 0.0f;
+        for (const auto& [_, weight] : bigram_it->second) total += weight;
+        if (total > 0.0f) {
+            for (const auto& [intent, weight] : bigram_it->second) {
+                float p = weight / total;
                 scores[intent] += p * (1.0f - config_.temporal_weight);
             }
         }
     }
 
-    // Level 2: Temporal bigram P(B|A, hour)
-    auto temp_it = temporal_transitions_.find(now_hour);
-    if (temp_it != temporal_transitions_.end()) {
+    // Level 2: Temporal bigram P(B|A, hour) with decay
+    auto temp_it = temporal_transitions_weighted_.find(now_hour);
+    if (temp_it != temporal_transitions_weighted_.end()) {
         auto temp_bigram = temp_it->second.find(current_intent);
         if (temp_bigram != temp_it->second.end()) {
-            uint32_t total = 0;
-            for (const auto& [_, count] : temp_bigram->second) total += count;
-            if (total > 0) {
-                for (const auto& [intent, count] : temp_bigram->second) {
-                    float p = static_cast<float>(count) /
-                              static_cast<float>(total);
+            float total = 0.0f;
+            for (const auto& [_, weight] : temp_bigram->second) total += weight;
+            if (total > 0.0f) {
+                for (const auto& [intent, weight] : temp_bigram->second) {
+                    float p = weight / total;
                     scores[intent] += p * config_.temporal_weight;
                 }
             }
         }
     }
 
-    // Level 3: Trigram boost
+    // Level 3: Trigram boost with decay
     if (recent_history_.size() >= 2) {
         auto it = recent_history_.rbegin();
         const auto& prev1 = it->intent_name;
         ++it;
         const auto& prev2 = it->intent_name;
-        auto tri_it = trigrams_.find(trigramKey(prev2, prev1));
-        if (tri_it != trigrams_.end()) {
-            uint32_t total = 0;
-            for (const auto& [_, count] : tri_it->second) total += count;
-            if (total > 0) {
-                for (const auto& [intent, count] : tri_it->second) {
-                    float p = static_cast<float>(count) /
-                              static_cast<float>(total);
+        auto tri_it = trigrams_weighted_.find(trigramKey(prev2, prev1));
+        if (tri_it != trigrams_weighted_.end()) {
+            float total = 0.0f;
+            for (const auto& [_, weight] : tri_it->second) total += weight;
+            if (total > 0.0f) {
+                for (const auto& [intent, weight] : tri_it->second) {
+                    float p = weight / total;
                     // Trigram acts as a confidence multiplier
                     scores[intent] *= (1.0f + p * 0.5f);
                 }
@@ -192,15 +202,15 @@ void IntentPredictor::save() const {
     out << "{\n\"observation_count\":" << observation_count_ << ",\n";
     out << "\"transitions\":{\n";
     bool first_outer = true;
-    for (const auto& [from, tos] : transitions_) {
+    for (const auto& [from, tos] : transitions_weighted_) {
         if (!first_outer) out << ",\n";
         first_outer = false;
         out << "\"" << from << "\":{";
         bool first_inner = true;
-        for (const auto& [to, count] : tos) {
+        for (const auto& [to, weight] : tos) {
             if (!first_inner) out << ",";
             first_inner = false;
-            out << "\"" << to << "\":" << count;
+            out << "\"" << to << "\":" << weight;
         }
         out << "}";
     }
@@ -242,7 +252,7 @@ void IntentPredictor::load() {
     auto block_start = trans_pos + 15;  // after "transitions":{
 
     // Simple state-machine parser for the nested object
-    transitions_.clear();
+    transitions_weighted_.clear();
     size_t pos = block_start;
     while (pos < content.size()) {
         // Find next outer key (a "from" intent)
@@ -275,8 +285,8 @@ void IntentPredictor::load() {
             std::string val_str = inner.substr(colon + 1, vend - colon - 1);
 
             try {
-                uint32_t count = static_cast<uint32_t>(std::stoul(val_str));
-                transitions_[from_key][to_key] = count;
+                float weight = std::stof(val_str);
+                transitions_weighted_[from_key][to_key] = weight;
             } catch (...) { /* skip malformed entry */ }
 
             ipos = vend + 1;

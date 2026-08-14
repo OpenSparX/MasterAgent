@@ -462,6 +462,24 @@ bool PlanVerifier::evaluate(
             return evaluateAF(model, state_id, *formula.children[0],
                               std::min(depth, formula.bound), visited, trace);
         }
+        case TemporalOp::AU: {
+            // A[φ U ψ]: ψ holds, OR (φ holds AND all successors satisfy AU)
+            if (evaluate(model, state_id, *formula.children[1], depth, trace)) {
+                return true;  // ψ satisfied now
+            }
+            if (!evaluate(model, state_id, *formula.children[0], depth, trace)) {
+                return false;  // φ must hold until ψ
+            }
+            // All successors must satisfy AU
+            for (const auto& succ : state.successors) {
+                if (!evaluate(model, succ, formula, depth - 1, trace)) {
+                    trace.push_back({succ, "", "AU violated", state.labels,
+                        static_cast<uint32_t>(trace.size())});
+                    return false;
+                }
+            }
+            return true;
+        }
         default:
             return true;
     }

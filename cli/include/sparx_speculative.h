@@ -142,16 +142,16 @@ public:
 private:
     PredictionConfig config_;
 
-    // Bigram transition counts: transitions_[A][B] = count of A→B
-    std::map<std::string, std::map<std::string, std::uint32_t>> transitions_;
+    // Weighted transition counts with exponential decay: transitions_weighted_[A][B] = weight
+    std::map<std::string, std::map<std::string, float>> transitions_weighted_;
 
-    // Temporal bigram: temporal_[hour][A][B] = count
+    // Temporal bigram with decay: temporal_weighted_[hour][A][B] = weight
     std::map<std::uint8_t,
-        std::map<std::string, std::map<std::string, std::uint32_t>>>
-        temporal_transitions_;
+        std::map<std::string, std::map<std::string, float>>>
+        temporal_transitions_weighted_;
 
-    // Trigram: trigram_[A+B][C] = count of (A,B)→C
-    std::map<std::string, std::map<std::string, std::uint32_t>> trigrams_;
+    // Trigram with decay: trigram_weighted_[A+B][C] = weight
+    std::map<std::string, std::map<std::string, float>> trigrams_weighted_;
 
     // Recent history for context
     std::deque<IntentRecord> recent_history_;
