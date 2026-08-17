@@ -17,6 +17,10 @@
     <!-- NPU inference needs wake lock for background processing -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Internet for model download -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Require Snapdragon NPU -->
     <uses-feature android:name="android.hardware.npu" android:required="false" />
 
@@ -44,10 +48,15 @@
             android:name=".ui.AgentPanelActivity"
             android:theme="@style/Theme.OpenSparX" />
 
-        <!-- Floating widget service -->
+        <!-- Floating widget service (desktop pet) -->
         <service
             android:name=".ui.FloatingAgentService"
             android:foregroundServiceType="specialUse"
+            android:exported="false" />
+
+        <!-- Chat bubble overlay service -->
+        <service
+            android:name=".ui.ChatBubbleService"
             android:exported="false" />
 
         <!-- Proactive context monitoring service -->

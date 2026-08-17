@@ -11,9 +11,11 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.slider.Slider
 import com.opensparx.agent.AgentApplication
 import com.opensparx.agent.databinding.ActivityMainBinding
+import com.opensparx.agent.inference.ModelManager
 import com.opensparx.agent.jni.AgentBridge
 import com.opensparx.agent.signal.ContextMonitorService
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import org.json.JSONObject
 
 /**
@@ -120,19 +122,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkNpuAvailability() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val available = try {
-                AgentBridge.isNpuAvailable()
-            } catch (e: UnsatisfiedLinkError) {
-                false
-            }
-            withContext(Dispatchers.Main) {
-                binding.textNpuStatus.text = if (available) {
-                    "Snapdragon NPU detected"
-                } else {
-                    "Not available — CPU fallback"
-                }
-            }
+        val vendor = app.chipVendor
+        val backendName = app.backend.name
+        binding.textNpuStatus.text = when (vendor) {
+            com.opensparx.agent.inference.BackendFactory.ChipVendor.QUALCOMM ->
+                "Snapdragon detected → $backendName"
+            com.opensparx.agent.inference.BackendFactory.ChipVendor.MEDIATEK ->
+                "Dimensity detected → $backendName"
+            else -> "No NPU — $backendName"
         }
     }
 
@@ -144,19 +141,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onModelActionClicked() {
-        // TODO: Trigger actual model download from CDN
-        // For now, show progress indicator as placeholder
+        val modelKey = app.currentModelKey()
         binding.progressModelDownload.visibility = View.VISIBLE
-        binding.progressModelDownload.isIndeterminate = true
+        binding.progressModelDownload.isIndeterminate = false
         binding.btnModelAction.isEnabled = false
-        binding.textModelStatus.text = "Downloading..."
+        binding.textModelStatus.text = "Preparing..."
 
         lifecycleScope.launch {
-            // Placeholder — real implementation will use DownloadManager or OkHttp
-            delay(2000)
-            binding.progressModelDownload.visibility = View.GONE
-            updateModelStatus()
-            checkOnboardingComplete()
+            app.modelManager.ensureModel(modelKey).collectLatest { state ->
+                when (state) {
+                    is ModelManager.DownloadState.Checking -> {
+                        binding.textModelStatus.text = "Checking cache..."
+                    }
+                    is ModelManager.DownloadState.Downloading -> {
+                        binding.progressModelDownload.isIndeterminate = false
+                        binding.progressModelDownload.progress = (state.progress * 100).toInt()
+                        val mb = state.bytesDownloaded / (1024 * 1024)
+                        val totalMb = state.totalBytes / (1024 * 1024)
+                        binding.textModelStatus.text = "Downloading ${mb}MB / ${totalMb}MB"
+                    }
+                    is ModelManager.DownloadState.Verifying -> {
+                        binding.progressModelDownload.isIndeterminate = true
+                        binding.textModelStatus.text = "Verifying..."
+                    }
+                    is ModelManager.DownloadState.Ready -> {
+                        binding.progressModelDownload.visibility = View.GONE
+                        binding.textModelStatus.text = "Ready ✓"
+                        binding.btnModelAction.text = "Ready"
+                        checkOnboardingComplete()
+                    }
+                    is ModelManager.DownloadState.Error -> {
+                        binding.progressModelDownload.visibility = View.GONE
+                        binding.textModelStatus.text = "Error: ${state.message}"
+                        binding.btnModelAction.isEnabled = true
+                        binding.btnModelAction.text = "Retry"
+                    }
+                }
+            }
         }
     }
 

@@ -85,12 +85,13 @@ class FloatingAgentService : Service() {
             y = 200
         }
 
-        // Drag + tap handling
+        // Drag + tap + long-press handling
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
         var isDragging = false
+        var touchDownTime = 0L
 
         floatingView.setOnTouchListener { _, event ->
             when (event.action) {
@@ -100,6 +101,7 @@ class FloatingAgentService : Service() {
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     isDragging = false
+                    touchDownTime = System.currentTimeMillis()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -112,7 +114,10 @@ class FloatingAgentService : Service() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isDragging) onWidgetTapped()
+                    if (!isDragging) {
+                        val holdTime = System.currentTimeMillis() - touchDownTime
+                        if (holdTime > 500) onWidgetLongPressed() else onWidgetTapped()
+                    }
                     true
                 }
                 else -> false
@@ -123,7 +128,15 @@ class FloatingAgentService : Service() {
     }
 
     private fun onWidgetTapped() {
-        // Open the full Agent Panel activity
+        // Open chat bubble overlay (short tap)
+        val intent = Intent(this, ChatBubbleService::class.java).apply {
+            putExtra(ChatBubbleService.EXTRA_ANCHOR_Y, floatingView.y.toInt())
+        }
+        startService(intent)
+    }
+
+    private fun onWidgetLongPressed() {
+        // Long press opens full Agent Panel
         val intent = Intent(this, AgentPanelActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

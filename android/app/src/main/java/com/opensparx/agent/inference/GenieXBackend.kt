@@ -83,7 +83,6 @@ class GenieXBackend(private val context: Context) : InferenceBackend {
                     modelPath = modelPath,
                     npuBudget = config.npuBudget,
                     maxKvTokens = config.maxKvTokens,
-                    // PLACEHOLDER_1
                 )
 
                 if (nativeHandle == 0L) {
