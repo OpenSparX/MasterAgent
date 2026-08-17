@@ -11,10 +11,16 @@
 #include <memory>
 #include <mutex>
 
-// Reuse the existing headers from cli/include/
-// In a real build these are symlinked or copied during gradle build
-// #include "sparx_proactive_engine.h"
-// #include "sparx_agent_scheduler.h"
+// Android-specific proactive engine
+namespace sparx::proactive::android {
+    void start();
+    void stop();
+    void push_signal(const std::string& channel, double value, float confidence);
+    void push_label_signal(const std::string& channel, const std::string& label, float score);
+    uint64_t register_trigger(const std::string& name, const std::string& channel,
+                               double threshold, bool fire_above,
+                               int priority, int cooldown_sec);
+}
 
 #define LOG_TAG "SparxAgent"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -90,13 +96,14 @@ JNIEXPORT void JNICALL
 Java_com_opensparx_agent_jni_AgentBridge_startProactiveEngine(JNIEnv*, jobject)
 {
     LOGI("Starting proactive engine");
-    // TODO: instantiate ProactiveEngine and start background eval loop
+    sparx::proactive::android::start();
 }
 
 JNIEXPORT void JNICALL
 Java_com_opensparx_agent_jni_AgentBridge_stopProactiveEngine(JNIEnv*, jobject)
 {
     LOGI("Stopping proactive engine");
+    sparx::proactive::android::stop();
 }
 
 JNIEXPORT void JNICALL
@@ -104,7 +111,7 @@ Java_com_opensparx_agent_jni_AgentBridge_pushSignal(
     JNIEnv* env, jobject, jstring channel, jdouble value, jfloat confidence)
 {
     const char* ch = env->GetStringUTFChars(channel, nullptr);
-    // TODO: route to ProactiveEngine::ingest_signal()
+    sparx::proactive::android::push_signal(ch, value, confidence);
     env->ReleaseStringUTFChars(channel, ch);
 }
 
@@ -114,7 +121,7 @@ Java_com_opensparx_agent_jni_AgentBridge_pushLabelSignal(
 {
     const char* ch = env->GetStringUTFChars(channel, nullptr);
     const char* lbl = env->GetStringUTFChars(label, nullptr);
-    // TODO: route to ProactiveEngine::ingest_signal() with LabelPayload
+    sparx::proactive::android::push_label_signal(ch, lbl, score);
     env->ReleaseStringUTFChars(channel, ch);
     env->ReleaseStringUTFChars(label, lbl);
 }

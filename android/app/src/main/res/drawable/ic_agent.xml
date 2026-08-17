@@ -1,0 +1,30 @@
+<!-- Agent icon placeholder (vector drawable) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Neural network / brain icon -->
+    <path
+        android:fillColor="#00FF88"
+        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,4c4.42,0 8,3.58 8,8s-3.58,8 -8,8 -8,-3.58 -8,-8 3.58,-8 8,-8z"/>
+    <!-- Center node -->
+    <path
+        android:fillColor="#00FF88"
+        android:pathData="M12,8m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <!-- Connected nodes -->
+    <path
+        android:fillColor="#00CC70"
+        android:pathData="M8,14m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+    <path
+        android:fillColor="#00CC70"
+        android:pathData="M16,14m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+    <path
+        android:fillColor="#00CC70"
+        android:pathData="M12,17m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"/>
+    <!-- Edges -->
+    <path
+        android:strokeColor="#00FF8866"
+        android:strokeWidth="0.8"
+        android:pathData="M12,10L8,14M12,10L16,14M12,10L12,17"/>
+</vector>
