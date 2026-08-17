@@ -216,55 +216,103 @@ class CockpitScenario:
         except curses.error:
             pass
 
-        # Left panel: Agent topology
-        panel_y = 4
-        draw_box(win, panel_y, 1, 10, 35, "Agent 状态")
-        row = panel_y + 1
-        for name, info in self.agents.items():
-            draw_agent_status(win, row, 3, name, info["status"], info["icon"])
-            row += 1
+        # ─── DAG Panel (core differentiator) ─────────────────────────────
+        dag_y = 4
+        draw_box(win, dag_y, 1, 9, 78, "Intent DAG — 有向无环图任务拆解")
+        self._draw_dag(win, dag_y + 1)
 
-        # Right panel: Task pipeline
-        draw_box(win, panel_y, 37, 10, 42, "任务流水线")
+        # Left panel: Task pipeline
+        panel_y = dag_y + 10
+        draw_box(win, panel_y, 1, 8, 38, "任务流水线")
         row = panel_y + 1
         for label, pct in self.tasks.items():
-            draw_progress(win, row, 39, 38, pct, label)
+            draw_progress(win, row, 3, 34, pct, label)
             row += 1
-
-        # Verification badge
         if self.verified:
             try:
-                win.addstr(row + 1, 39, " 🔒 Formal Verify: PASS",
+                win.addstr(row, 3, " 🔒 Formal Verify: PASS",
                            curses.color_pair(C_SUCCESS) | curses.A_BOLD)
             except curses.error:
                 pass
 
-        # Bottom: Device info + logs
-        dev_y = panel_y + 11
-        draw_box(win, dev_y, 1, 4, 35, "设备")
+        # Right panel: Device + Latency
+        draw_box(win, panel_y, 40, 8, 39, "设备 / 延迟")
         try:
-            win.addstr(dev_y+1, 3, "NPU: SA8797P  Load: 34%", curses.color_pair(C_DIM))
-            win.addstr(dev_y+2, 3, "推理: 42 tok/s  Mem: 1.8GB", curses.color_pair(C_DIM))
+            win.addstr(panel_y+1, 42, "NPU: SA8797P  Load: 34%",
+                       curses.color_pair(C_DIM))
+            win.addstr(panel_y+2, 42, "推理: 42 tok/s  Mem: 1.8GB",
+                       curses.color_pair(C_DIM))
+            win.addstr(panel_y+3, 42, "KV Cache Hit: 94%  Speculative: 3步",
+                       curses.color_pair(C_DIM))
+            if self.latency_ms > 0:
+                win.addstr(panel_y+5, 42, f"端到端: {self.latency_ms}ms",
+                           curses.color_pair(C_SUCCESS) | curses.A_BOLD)
+                win.addstr(panel_y+6, 42, "云端对比: ~2400ms  加速: 12.8×",
+                           curses.color_pair(C_DIM))
         except curses.error:
             pass
 
-        # Latency display
-        if self.latency_ms > 0:
-            draw_box(win, dev_y, 37, 4, 42, "延迟")
-            try:
-                win.addstr(dev_y+1, 39, f"端到端: {self.latency_ms}ms",
-                           curses.color_pair(C_SUCCESS) | curses.A_BOLD)
-                win.addstr(dev_y+2, 39, "云端对比: ~2400ms  加速: 12.8×",
-                           curses.color_pair(C_DIM))
-            except curses.error:
-                pass
-
         # Log panel
-        log_y = dev_y + 5
+        log_y = panel_y + 9
         draw_box(win, log_y, 1, 8, 78, "实时日志")
         visible_logs = self.logs[-6:]
         for i, log in enumerate(visible_logs):
             color = C_SUCCESS if "✓" in log else C_DIM
+            try:
+                win.addstr(log_y + 1 + i, 3, log[:74], curses.color_pair(color))
+            except curses.error:
+                pass
+
+    def _draw_dag(self, win, y):
+        """Draw the DAG topology with colored nodes based on agent status."""
+        # Node rendering helper
+        def node(name, col_offset, row_offset):
+            agent = self.agents.get(name, {"status": "idle"})
+            st = agent["status"]
+            color_map = {"active": C_PROGRESS_ACTIVE, "done": C_SUCCESS, "idle": C_DIM}
+            c = color_map.get(st, C_DIM)
+            icon = agent.get("icon", "·")
+            # Blink effect for active
+            bold = curses.A_BOLD if st in ("active", "done") else 0
+            label = f"[{icon}{name}]"
+            try:
+                win.addstr(y + row_offset, col_offset, label,
+                           curses.color_pair(c) | bold)
+            except curses.error:
+                pass
+            return col_offset + len(label)
+
+        # DAG layout:
+        #   [🎙Voice] ──→ [🧠Planner] ──→ [🔒Verifier] ──┬→ [❄️Climate]
+        #                                                  ├→ [🎵Media]
+        #                                                  └→ [💺Seat]
+        edge_c = curses.color_pair(C_BORDER)
+        try:
+            # Row 0: main chain
+            r = 2
+            end1 = node("Voice", 4, r)
+            win.addstr(y + r, end1, " ──→ ", edge_c)
+            end2 = node("Planner", end1 + 5, r)
+            win.addstr(y + r, end2, " ──→ ", edge_c)
+            end3 = node("Verifier", end2 + 5, r)
+            win.addstr(y + r, end3, " ──┬→ ", edge_c)
+            node("Climate", end3 + 6, r)
+
+            # Row 1: Media branch
+            win.addstr(y + r + 1, end3, "   ├→ ", edge_c)
+            node("Media", end3 + 6, r + 1)
+
+            # Row 2: Seat branch
+            win.addstr(y + r + 2, end3, "   └→ ", edge_c)
+            node("Seat", end3 + 6, r + 2)
+
+            # DAG annotation
+            win.addstr(y + 0, 4, "依赖关系: Voice → Planner → Verifier → {Climate ∥ Media ∥ Seat}",
+                       curses.color_pair(C_DIM))
+            win.addstr(y + 6, 4, "并行度: 3  临界路径: Voice→Planner→Verify→Climate  深度: 4",
+                       curses.color_pair(C_DIM))
+        except curses.error:
+            pass
             try:
                 win.addstr(log_y + 1 + i, 3, log[:74], curses.color_pair(color))
             except curses.error:
@@ -378,55 +426,44 @@ class DroneScenario:
         except curses.error:
             pass
 
-        # Left panel: Agents
-        panel_y = 4
-        draw_box(win, panel_y, 1, 10, 35, "Agent 状态")
-        row = panel_y + 1
-        for name, info in self.agents.items():
-            draw_agent_status(win, row, 3, name, info["status"], info["icon"])
-            row += 1
+        # ─── DAG Panel ────────────────────────────────────────────────────
+        dag_y = 4
+        draw_box(win, dag_y, 1, 9, 78, "Perception DAG — 感知链路拓扑")
+        self._draw_dag(win, dag_y + 1)
 
-        # Right panel: Pipeline
-        draw_box(win, panel_y, 37, 10, 42, "感知流水线")
+        # Left panel: Pipeline
+        panel_y = dag_y + 10
+        draw_box(win, panel_y, 1, 8, 38, "感知流水线")
         row = panel_y + 1
         for label, pct in self.tasks.items():
-            draw_progress(win, row, 39, 38, pct, label)
+            draw_progress(win, row, 3, 34, pct, label)
             row += 1
-
-        # Risk badge
         if self.risk_level:
             try:
-                win.addstr(row + 1, 39, f" ⚠ 风险等级: {self.risk_level}",
+                win.addstr(row, 3, f" ⚠ 风险等级: {self.risk_level}",
                            curses.color_pair(C_ALERT) | curses.A_BOLD)
             except curses.error:
                 pass
 
-        # Bottom left: detections
-        det_y = panel_y + 11
-        draw_box(win, det_y, 1, 6, 35, "检测结果")
+        # Right panel: Detections + Device
+        draw_box(win, panel_y, 40, 8, 39, "检测结果 / 设备")
         try:
-            win.addstr(det_y+1, 3, f"帧数: {self.frame_count}  隐患: {len(self.detections)}",
+            win.addstr(panel_y+1, 42,
+                       f"帧数: {self.frame_count}  隐患: {len(self.detections)}",
                        curses.color_pair(C_DIM))
-            for i, (name, val, gps, conf) in enumerate(self.detections[:3]):
+            for i, (name, val, gps, conf) in enumerate(self.detections[:2]):
                 c = C_ALERT if conf > 0.9 else C_PROGRESS_ACTIVE
-                win.addstr(det_y+2+i, 3, f"🔴 {name} {val} cf:{conf:.2f}",
+                win.addstr(panel_y+2+i, 42, f"🔴 {name} {val} cf:{conf:.2f}",
                            curses.color_pair(c))
-        except curses.error:
-            pass
-
-        # Bottom right: Device
-        draw_box(win, det_y, 37, 6, 42, "设备状态")
-        try:
-            win.addstr(det_y+1, 39, "NPU: SA8797P  Load: 67%", curses.color_pair(C_DIM))
-            win.addstr(det_y+2, 39, "推理: 38 tok/s  IR: 15fps", curses.color_pair(C_DIM))
-            win.addstr(det_y+3, 39, "电量: 72%  信号: 4G ✓", curses.color_pair(C_DIM))
-            win.addstr(det_y+4, 39, "GPS: 31.24°N, 104.73°E  Alt: 120m",
+            win.addstr(panel_y+5, 42, "NPU: SA8797P  Load: 67%",
+                       curses.color_pair(C_DIM))
+            win.addstr(panel_y+6, 42, "电量: 72%  GPS: 31.24°N  Alt: 120m",
                        curses.color_pair(C_DIM))
         except curses.error:
             pass
 
         # Log panel
-        log_y = det_y + 7
+        log_y = panel_y + 9
         draw_box(win, log_y, 1, 8, 78, "实时日志")
         visible_logs = self.logs[-6:]
         for i, log in enumerate(visible_logs):
@@ -435,6 +472,59 @@ class DroneScenario:
                 win.addstr(log_y + 1 + i, 3, log[:74], curses.color_pair(color))
             except curses.error:
                 pass
+
+    def _draw_dag(self, win, y):
+        """Draw the perception DAG with colored nodes."""
+        def node(name, col_offset, row_offset):
+            agent = self.agents.get(name, {"status": "idle"})
+            st = agent["status"]
+            color_map = {"active": C_PROGRESS_ACTIVE, "done": C_SUCCESS, "idle": C_DIM}
+            c = color_map.get(st, C_DIM)
+            icon = agent.get("icon", "·")
+            bold = curses.A_BOLD if st in ("active", "done") else 0
+            label = f"[{icon}{name}]"
+            try:
+                win.addstr(y + row_offset, col_offset, label,
+                           curses.color_pair(c) | bold)
+            except curses.error:
+                pass
+            return col_offset + len(label)
+
+        # DAG layout:
+        #                    ┌→ [📷Camera] ────┐
+        #  [🎙Voice]→[🧠Planner]─┤                ├→[👁Analyzer]→[📢Reporter]
+        #                    └→ [🌡IR Sensor]──┘
+        edge_c = curses.color_pair(C_BORDER)
+        try:
+            # Row 1 (top branch): Camera
+            win.addstr(y + 1, 28, "┌→ ", edge_c)
+            node("Camera", 31, 1)
+            win.addstr(y + 1, 42, " ───┐", edge_c)
+
+            # Row 2 (main): Voice → Planner → ... → Analyzer → Reporter
+            end1 = node("Voice", 4, 2)
+            win.addstr(y + 2, end1, " ──→ ", edge_c)
+            end2 = node("Planner", end1 + 5, 2)
+            win.addstr(y + 2, end2, " ─┤", edge_c)
+            win.addstr(y + 2, 46, "├→ ", edge_c)
+            end3 = node("Analyzer", 49, 2)
+            win.addstr(y + 2, end3, " ──→ ", edge_c)
+            node("Reporter", end3 + 5, 2)
+
+            # Row 3 (bottom branch): IR Sensor
+            win.addstr(y + 3, 28, "└→ ", edge_c)
+            node("IR Sensor", 31, 3)
+            win.addstr(y + 3, 43, "──┘", edge_c)
+
+            # Annotations
+            win.addstr(y + 0, 4,
+                       "依赖: Voice→Planner→{Camera ∥ IR}→Analyzer→Reporter",
+                       curses.color_pair(C_DIM))
+            win.addstr(y + 5, 4,
+                       "并行度: 2 (双光融合)  临界路径深度: 5  模态: IR+RGB",
+                       curses.color_pair(C_DIM))
+        except curses.error:
+            pass
 
 # ─── Main Loop ────────────────────────────────────────────────────────────────
 
