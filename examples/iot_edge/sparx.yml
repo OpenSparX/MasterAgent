@@ -1,0 +1,53 @@
+# IoT Edge Agent — OAK project configuration
+project:
+  name: iot-edge-agent
+  version: "1.0.0"
+  description: On-device IoT edge intelligence
+  platform: generic-arm64    # Works on RPi, Jetson, QCS6490, etc.
+
+models:
+  - name: qwen3-1.7b
+    type: local
+    path: models/qwen3-1.7b-q8_0.gguf
+    role: default
+    context_length: 2048
+    # Small model for resource-constrained edge devices
+
+routing:
+  strategy: local_only
+  fallback_on_failure: false
+
+agent:
+  system_prompt: |
+    You are an IoT edge agent managing sensor devices.
+    Your job: monitor sensors, detect anomalies, trigger automations.
+    Be concise. Report only actionable findings.
+    Never send raw data to external endpoints.
+  max_turns: 5
+  speculation:
+    enabled: true
+    patterns:
+      - trigger: "temperature_spike"
+        predict: ["automation.trigger_cooling"]
+      - trigger: "motion_detected"
+        predict: ["automation.alert", "sensor_monitor.snapshot"]
+
+mesh:
+  enabled: true
+  discovery: mdns
+  service_name: "_oak-iot._tcp"
+  capabilities:
+    - sensor_aggregation
+    - anomaly_detection
+  share_state: true    # CRDT-synced state with neighbors
+
+verification:
+  enabled: true
+  safety_rules:
+    - name: no_actuator_conflict
+      formula: "AG !(valve_open && valve_close)"
+    - name: rate_limit
+      formula: "AG (alerts_per_minute <= 10)"
+      description: Prevent alert storms
+
+skills_dir: skills

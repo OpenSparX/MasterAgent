@@ -1,0 +1,86 @@
+name: test-project
+version: "0.1.0"
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║ Model Registry — 统一模型配置                                               ║
+# ║ Configure all models (local + cloud) in one place.                         ║
+# ║ 在此统一配置所有模型（本地模型 + 云端模型），初始化时一次性完成。                    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+models:
+  # ── 本地模型 (Local) ──────────────────────────────────────────────────────
+  # 运行在设备端的 GGUF 模型，通过 llama-server 推理。
+  # 如果 path 为空，可通过 --model 参数或 $SPARX_MODEL 环境变量指定。
+  - name: qwen3-4b
+    type: local
+    role: default
+    # path: "./models/qwen3-4b-q4_k_m.gguf"
+    context_length: 4096
+    max_output_tokens: 512
+    temperature: 0.7
+    supports_code: true
+    supports_reasoning: true
+    cost_tier: 0
+
+  # ── 云端模型 (Cloud) ──────────────────────────────────────────────────────
+  # OpenAI 兼容 API，用于复杂任务的端云融合调度。
+  # 取消下方注释并填写你的 endpoint 和 API Key 环境变量名即可启用。
+
+  # - name: qwen3-235b
+  #   type: cloud
+  #   role: cloud
+  #   endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+  #   api_key_env: "DASHSCOPE_API_KEY"
+  #   context_length: 131072
+  #   max_output_tokens: 4096
+  #   temperature: 0.7
+  #   supports_code: true
+  #   supports_reasoning: true
+  #   supports_tools: true
+  #   cost_tier: 2
+
+  # - name: deepseek-r1
+  #   type: cloud
+  #   role: reasoning
+  #   endpoint: "https://api.deepseek.com/v1/chat/completions"
+  #   api_key_env: "DEEPSEEK_API_KEY"
+  #   context_length: 65536
+  #   max_output_tokens: 8192
+  #   temperature: 0.6
+  #   supports_code: true
+  #   supports_reasoning: true
+  #   cost_tier: 2
+
+  # - name: gpt-4o
+  #   type: cloud
+  #   role: cloud
+  #   endpoint: "https://api.openai.com/v1/chat/completions"
+  #   api_key_env: "OPENAI_API_KEY"
+  #   context_length: 128000
+  #   max_output_tokens: 4096
+  #   temperature: 0.7
+  #   supports_code: true
+  #   supports_reasoning: true
+  #   supports_tools: true
+  #   supports_vision: true
+  #   cost_tier: 3
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║ Routing — 路由策略                                                          ║
+# ║ Controls how tasks are dispatched between models.                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+routing:
+  default_model: qwen3-4b
+  # cloud_model: qwen3-235b         # 取消注释启用端云融合
+  # reasoning_model: deepseek-r1    # 取消注释启用推理模型
+  cloud_enabled: false               # 设为 true 激活云端调度
+  complexity_threshold: 0.6          # 复杂度超过此值时路由到云端 [0.0-1.0]
+  fallback_to_local: true            # 云端失败时回退本地
+  timeout_ms: 30000                  # 云端请求超时 (ms)
+  deterministic_first: true          # 优先匹配确定性技能
+  confidence_threshold: 0.85         # 技能匹配置信度阈值
+
+skills:
+  - hello
+
+reliability: D2
+runtime: auto

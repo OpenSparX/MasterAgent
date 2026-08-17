@@ -1,0 +1,60 @@
+# Vehicle Status Skill — sensor data and diagnostics
+name: vehicle_status
+version: "1.0.0"
+description: Query vehicle sensors, battery, and diagnostics
+
+actions:
+  battery:
+    description: Get battery / fuel level and estimated range
+    params: []
+    returns:
+      level_percent: number
+      range_km: number
+      charging: boolean
+
+  tire_pressure:
+    description: Get tire pressure for all wheels
+    params: []
+    returns:
+      front_left_kpa: number
+      front_right_kpa: number
+      rear_left_kpa: number
+      rear_right_kpa: number
+      alert: boolean
+
+  speed:
+    description: Get current speed
+    params: []
+    returns:
+      speed_kmh: number
+      speed_limit_kmh: number
+
+  diagnostics:
+    description: Run vehicle diagnostics check
+    params:
+      - name: system
+        type: enum
+        values: [all, engine, battery, brakes, lights, tires]
+        default: all
+    returns:
+      status: enum [ok, warning, critical]
+      issues: array
+
+  trip:
+    description: Get trip statistics
+    params: []
+    returns:
+      distance_km: number
+      duration_min: number
+      avg_speed_kmh: number
+      energy_consumed_kwh: number
+
+examples:
+  - input: "还能跑多远？"
+    action: battery
+
+  - input: "胎压正常吗？"
+    action: tire_pressure
+
+  - input: "跑了多少公里了？"
+    action: trip

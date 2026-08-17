@@ -1,0 +1,57 @@
+# Automotive Assistant — OAK project configuration
+# Run with: sparx run
+
+project:
+  name: automotive-assistant
+  version: "1.0.0"
+  description: On-device automotive voice assistant
+  platform: qualcomm-sa8797p
+
+models:
+  - name: qwen3-4b
+    type: local
+    path: models/qwen3-4b-q4_k_m.gguf
+    role: default
+    context_length: 4096
+
+  # Uncomment for cloud fallback on complex queries:
+  # - name: qwen3-235b
+  #   type: cloud
+  #   endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
+  #   api_key_env: DASHSCOPE_API_KEY
+  #   role: cloud
+  #   model_id: qwen3-235b-a22b
+
+routing:
+  strategy: local_first
+  fallback_on_failure: false   # Safety: never leave the vehicle
+  max_cloud_latency_ms: 0     # Disabled for automotive
+
+agent:
+  system_prompt: |
+    你是一个车载智能助手。你只能控制导航、媒体、空调和查询车辆状态。
+    安全约束：不得在驾驶中执行分散注意力的操作。
+    所有回复简短明确，适合语音播报。
+  max_turns: 10
+  speculation:
+    enabled: true
+    patterns:
+      - trigger: "出发"
+        predict: ["navigation.start_route"]
+      - trigger: "太冷了"
+        predict: ["climate.increase_temp"]
+      - trigger: "播放"
+        predict: ["media.play"]
+
+verification:
+  enabled: true
+  safety_rules:
+    - name: no_conflict
+      formula: "AG !(actuator_a && actuator_b)"
+      description: No conflicting actuator commands
+    - name: temp_bounds
+      formula: "AG (temp >= 16 && temp <= 30)"
+      description: Climate temperature within safe bounds
+
+skills_dir: skills
+plans_dir: plans

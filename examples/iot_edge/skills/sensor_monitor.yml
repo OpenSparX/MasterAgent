@@ -1,0 +1,64 @@
+# Sensor Monitor Skill — data ingestion and analysis
+name: sensor_monitor
+version: "1.0.0"
+description: Ingest, buffer, and analyze sensor data streams
+
+actions:
+  read:
+    description: Read current value from a sensor
+    params:
+      - name: sensor_id
+        type: string
+        required: true
+      - name: sensor_type
+        type: enum
+        values: [temperature, humidity, pressure, motion, power, light, co2]
+    returns:
+      value: number
+      unit: string
+      timestamp: string
+
+  history:
+    description: Get recent readings from a sensor
+    params:
+      - name: sensor_id
+        type: string
+        required: true
+      - name: duration_minutes
+        type: number
+        default: 60
+    returns:
+      readings: array
+      min: number
+      max: number
+      avg: number
+
+  snapshot:
+    description: Capture current state of all sensors
+    params: []
+    returns:
+      sensors: array
+      timestamp: string
+
+  set_threshold:
+    description: Configure alert thresholds for a sensor
+    params:
+      - name: sensor_id
+        type: string
+        required: true
+      - name: min_value
+        type: number
+      - name: max_value
+        type: number
+      - name: rate_of_change
+        type: number
+        description: Alert if value changes faster than this per minute
+
+examples:
+  - input: "What's the temperature in zone A?"
+    action: read
+    params: { sensor_id: "zone_a_temp", sensor_type: temperature }
+
+  - input: "Show me humidity for the last hour"
+    action: history
+    params: { sensor_id: "main_humidity", duration_minutes: 60 }

@@ -1,0 +1,70 @@
+# Media Control Skill — audio playback management
+name: media_control
+version: "1.0.0"
+description: Control music, radio, podcasts, and audiobooks
+
+parameters:
+  - name: source
+    type: enum
+    values: [local, bluetooth, radio_fm, radio_am, usb]
+    default: local
+
+actions:
+  play:
+    description: Start or resume playback
+    params:
+      - name: query
+        type: string
+        description: Song name, artist, or genre
+      - name: source
+        type: enum
+        values: [local, bluetooth, radio_fm, usb]
+    actuators: [audio]
+    safety: non_blocking
+
+  pause:
+    description: Pause current playback
+    params: []
+
+  next:
+    description: Skip to next track
+    params: []
+
+  previous:
+    description: Go back to previous track
+    params: []
+
+  volume:
+    description: Adjust volume
+    params:
+      - name: level
+        type: number
+        min: 0
+        max: 100
+      - name: relative
+        type: enum
+        values: [up, down, set]
+        default: set
+
+  radio_tune:
+    description: Tune to FM/AM frequency
+    params:
+      - name: frequency
+        type: number
+        description: "FM: 87.5-108.0, AM: 530-1700"
+      - name: band
+        type: enum
+        values: [fm, am]
+        default: fm
+
+examples:
+  - input: "播放周杰伦的歌"
+    action: play
+    params: { query: "周杰伦", source: local }
+
+  - input: "声音大一点"
+    action: volume
+    params: { level: 10, relative: up }
+
+  - input: "下一首"
+    action: next

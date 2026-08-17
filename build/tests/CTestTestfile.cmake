@@ -1,0 +1,38 @@
+# CMake generated Testfile for 
+# Source directory: /tmp/sparx-work/tests
+# Build directory: /tmp/sparx-work/build/tests
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+add_test(test_e2e "/tmp/sparx-work/build/tests/test_e2e")
+set_tests_properties(test_e2e PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;11;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_atomic "/tmp/sparx-work/build/tests/test_atomic")
+set_tests_properties(test_atomic PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;12;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_atomic_durability "/tmp/sparx-work/build/tests/test_atomic_durability")
+set_tests_properties(test_atomic_durability PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;13;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_orchestrator_durability "/tmp/sparx-work/build/tests/test_orchestrator_durability")
+set_tests_properties(test_orchestrator_durability PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;14;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_orchestrator_controls "/tmp/sparx-work/build/tests/test_orchestrator_controls")
+set_tests_properties(test_orchestrator_controls PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;16;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_inference "/tmp/sparx-work/build/tests/test_inference")
+set_tests_properties(test_inference PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;18;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_observability "/tmp/sparx-work/build/tests/test_observability")
+set_tests_properties(test_observability PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;19;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_resilience "/tmp/sparx-work/build/tests/test_resilience")
+set_tests_properties(test_resilience PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;20;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_contracts "/tmp/sparx-work/build/tests/test_contracts")
+set_tests_properties(test_contracts PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;21;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_mcp_wire_contracts "/tmp/sparx-work/build/tests/test_mcp_wire_contracts")
+set_tests_properties(test_mcp_wire_contracts PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;22;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_prompt_skill "/tmp/sparx-work/build/tests/test_prompt_skill")
+set_tests_properties(test_prompt_skill PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;24;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_preprocess "/tmp/sparx-work/build/tests/test_preprocess")
+set_tests_properties(test_preprocess PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;25;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_agent_dispatch_control "/tmp/sparx-work/build/tests/test_agent_dispatch_control")
+set_tests_properties(test_agent_dispatch_control PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;6;add_test;/tmp/sparx-work/tests/CMakeLists.txt;26;add_master_agent_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_memory_short_term_l1 "/tmp/sparx-work/build/tests/test_memory_short_term_l1")
+set_tests_properties(test_memory_short_term_l1 PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;37;add_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_sparx_runtimes "/tmp/sparx-work/build/tests/test_sparx_runtimes")
+set_tests_properties(test_sparx_runtimes PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;56;add_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")
+add_test(test_sparx_dag_builder "/tmp/sparx-work/build/tests/test_sparx_dag_builder")
+set_tests_properties(test_sparx_dag_builder PROPERTIES  WORKING_DIRECTORY "/tmp/sparx-work/build" _BACKTRACE_TRIPLES "/tmp/sparx-work/tests/CMakeLists.txt;67;add_test;/tmp/sparx-work/tests/CMakeLists.txt;0;")

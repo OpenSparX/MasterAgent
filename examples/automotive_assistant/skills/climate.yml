@@ -1,0 +1,73 @@
+# Climate Control Skill — HVAC management
+name: climate
+version: "1.0.0"
+description: Vehicle climate control (AC, heating, ventilation)
+
+actions:
+  set_temp:
+    description: Set target temperature
+    params:
+      - name: temp_celsius
+        type: number
+        min: 16
+        max: 30
+      - name: zone
+        type: enum
+        values: [all, driver, passenger, rear]
+        default: all
+    actuators: [hvac]
+    safety: bounded
+
+  increase_temp:
+    description: Increase temperature by increment
+    params:
+      - name: delta
+        type: number
+        default: 2.0
+
+  decrease_temp:
+    description: Decrease temperature by increment
+    params:
+      - name: delta
+        type: number
+        default: 2.0
+
+  set_fan:
+    description: Set fan speed
+    params:
+      - name: speed
+        type: enum
+        values: [auto, low, medium, high, max]
+        default: auto
+
+  seat_heating:
+    description: Control seat heating
+    params:
+      - name: level
+        type: enum
+        values: [off, low, medium, high]
+      - name: seat
+        type: enum
+        values: [driver, passenger, both]
+        default: driver
+
+  defrost:
+    description: Activate windshield defrost
+    params:
+      - name: zone
+        type: enum
+        values: [front, rear, both]
+        default: front
+
+examples:
+  - input: "温度调到24度"
+    action: set_temp
+    params: { temp_celsius: 24, zone: all }
+
+  - input: "太冷了"
+    action: increase_temp
+    params: { delta: 2.0 }
+
+  - input: "打开座椅加热"
+    action: seat_heating
+    params: { level: medium, seat: driver }

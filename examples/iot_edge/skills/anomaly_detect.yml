@@ -1,0 +1,57 @@
+# Anomaly Detection Skill — local ML-based anomaly detection
+name: anomaly_detect
+version: "1.0.0"
+description: Detect anomalous patterns in sensor streams using on-device ML
+
+actions:
+  analyze:
+    description: Run anomaly detection on recent sensor data
+    params:
+      - name: sensor_id
+        type: string
+        required: true
+      - name: window_minutes
+        type: number
+        default: 30
+      - name: sensitivity
+        type: enum
+        values: [low, medium, high]
+        default: medium
+    returns:
+      is_anomaly: boolean
+      confidence: number
+      pattern: string
+      suggested_action: string
+
+  train_baseline:
+    description: Establish normal baseline for a sensor (requires 24h data)
+    params:
+      - name: sensor_id
+        type: string
+        required: true
+    returns:
+      baseline_mean: number
+      baseline_std: number
+      status: string
+
+  list_anomalies:
+    description: Get recent anomaly events
+    params:
+      - name: hours
+        type: number
+        default: 24
+      - name: severity
+        type: enum
+        values: [all, warning, critical]
+        default: all
+    returns:
+      anomalies: array
+
+examples:
+  - input: "Is the compressor behaving normally?"
+    action: analyze
+    params: { sensor_id: "compressor_vibration", sensitivity: medium }
+
+  - input: "Any anomalies in the last 12 hours?"
+    action: list_anomalies
+    params: { hours: 12, severity: all }

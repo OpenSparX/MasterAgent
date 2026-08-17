@@ -1,0 +1,76 @@
+# Lighting Skill — room and zone lighting control
+name: lighting
+version: "1.0.0"
+description: Control smart lights (brightness, color, temperature)
+
+actions:
+  set:
+    description: Set light state for a room or device
+    params:
+      - name: room
+        type: string
+        required: true
+        description: "Room name: living_room, bedroom, kitchen, bathroom, etc."
+      - name: state
+        type: enum
+        values: [on, off]
+        default: on
+      - name: brightness
+        type: number
+        min: 0
+        max: 100
+        default: 80
+      - name: color_temp
+        type: number
+        min: 2700
+        max: 6500
+        description: Color temperature in Kelvin (warm=2700, cool=6500)
+      - name: color
+        type: string
+        description: "Hex color code for RGB lights (e.g., #FF6B35)"
+    actuators: [zigbee_light, wifi_light]
+    safety: non_blocking
+
+  dim:
+    description: Relative brightness adjustment
+    params:
+      - name: room
+        type: string
+        required: true
+      - name: direction
+        type: enum
+        values: [up, down]
+      - name: amount
+        type: number
+        default: 20
+
+  all_off:
+    description: Turn off all lights in the home
+    params: []
+    safety: confirm_if_occupied
+
+  status:
+    description: Get current lighting state for a room
+    params:
+      - name: room
+        type: string
+    returns:
+      state: string
+      brightness: number
+      color_temp: number
+
+examples:
+  - input: "开灯"
+    action: set
+    params: { room: "living_room", state: on, brightness: 80 }
+
+  - input: "把卧室灯调暗一点"
+    action: dim
+    params: { room: "bedroom", direction: down, amount: 30 }
+
+  - input: "关掉所有灯"
+    action: all_off
+
+  - input: "客厅灯调成暖色"
+    action: set
+    params: { room: "living_room", color_temp: 2700 }

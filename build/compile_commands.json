@@ -1,0 +1,776 @@
+[
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/third_party/memory_short_term/include -I/tmp/sparx-work/third_party -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/atomic_file_writer.cpp.o -c /tmp/sparx-work/third_party/memory_short_term/src/atomic_file_writer.cpp",
+  "file": "/tmp/sparx-work/third_party/memory_short_term/src/atomic_file_writer.cpp",
+  "output": "CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/atomic_file_writer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/third_party/memory_short_term/include -I/tmp/sparx-work/third_party -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/checksum.cpp.o -c /tmp/sparx-work/third_party/memory_short_term/src/checksum.cpp",
+  "file": "/tmp/sparx-work/third_party/memory_short_term/src/checksum.cpp",
+  "output": "CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/checksum.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/third_party/memory_short_term/include -I/tmp/sparx-work/third_party -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/json_conversation_journal.cpp.o -c /tmp/sparx-work/third_party/memory_short_term/src/json_conversation_journal.cpp",
+  "file": "/tmp/sparx-work/third_party/memory_short_term/src/json_conversation_journal.cpp",
+  "output": "CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/json_conversation_journal.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/third_party/memory_short_term/include -I/tmp/sparx-work/third_party -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/short_term_api_controller.cpp.o -c /tmp/sparx-work/third_party/memory_short_term/src/short_term_api_controller.cpp",
+  "file": "/tmp/sparx-work/third_party/memory_short_term/src/short_term_api_controller.cpp",
+  "output": "CMakeFiles/memory_short_term_core.dir/third_party/memory_short_term/src/short_term_api_controller.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/atomic_lineage.cpp.o -c /tmp/sparx-work/src/agent_dispatch/atomic_lineage.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/atomic_lineage.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/atomic_lineage.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/control_plane.cpp.o -c /tmp/sparx-work/src/agent_dispatch/control_plane.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/control_plane.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/control_plane.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/dispatch_contracts.cpp.o -c /tmp/sparx-work/src/agent_dispatch/dispatch_contracts.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/dispatch_contracts.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/dispatch_contracts.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/dispatch_scheduler.cpp.o -c /tmp/sparx-work/src/agent_dispatch/dispatch_scheduler.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/dispatch_scheduler.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/dispatch_scheduler.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/dispatch_state.cpp.o -c /tmp/sparx-work/src/agent_dispatch/dispatch_state.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/dispatch_state.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/dispatch_state.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/inference_lineage.cpp.o -c /tmp/sparx-work/src/agent_dispatch/inference_lineage.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/inference_lineage.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/inference_lineage.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/preemption_controller.cpp.o -c /tmp/sparx-work/src/agent_dispatch/preemption_controller.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/preemption_controller.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/preemption_controller.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/persistence_store.cpp.o -c /tmp/sparx-work/src/agent_dispatch/persistence_store.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/persistence_store.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/persistence_store.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/query_reconcile.cpp.o -c /tmp/sparx-work/src/agent_dispatch/query_reconcile.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/query_reconcile.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/query_reconcile.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/registry_admission.cpp.o -c /tmp/sparx-work/src/agent_dispatch/registry_admission.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/registry_admission.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/registry_admission.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_dispatch/route_selector.cpp.o -c /tmp/sparx-work/src/agent_dispatch/route_selector.cpp",
+  "file": "/tmp/sparx-work/src/agent_dispatch/route_selector.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_dispatch/route_selector.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_service/agent_service_impl.cpp.o -c /tmp/sparx-work/src/agent_service/agent_service_impl.cpp",
+  "file": "/tmp/sparx-work/src/agent_service/agent_service_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_service/agent_service_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_service/failure_mapping.cpp.o -c /tmp/sparx-work/src/agent_service/failure_mapping.cpp",
+  "file": "/tmp/sparx-work/src/agent_service/failure_mapping.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_service/failure_mapping.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_service/intent_query_gateway.cpp.o -c /tmp/sparx-work/src/agent_service/intent_query_gateway.cpp",
+  "file": "/tmp/sparx-work/src/agent_service/intent_query_gateway.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_service/intent_query_gateway.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_service/observability.cpp.o -c /tmp/sparx-work/src/agent_service/observability.cpp",
+  "file": "/tmp/sparx-work/src/agent_service/observability.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_service/observability.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/agent_service/turn_pipeline.cpp.o -c /tmp/sparx-work/src/agent_service/turn_pipeline.cpp",
+  "file": "/tmp/sparx-work/src/agent_service/turn_pipeline.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/agent_service/turn_pipeline.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/admission_validator.cpp.o -c /tmp/sparx-work/src/atomic_service/admission_validator.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/admission_validator.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/admission_validator.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/atomic_service_impl.cpp.o -c /tmp/sparx-work/src/atomic_service/atomic_service_impl.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/atomic_service_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/atomic_service_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/deterministic_provider.cpp.o -c /tmp/sparx-work/src/atomic_service/deterministic_provider.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/deterministic_provider.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/deterministic_provider.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/execution_scheduler.cpp.o -c /tmp/sparx-work/src/atomic_service/execution_scheduler.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/execution_scheduler.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/execution_scheduler.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/mcp_wire.cpp.o -c /tmp/sparx-work/src/atomic_service/mcp_wire.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/mcp_wire.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/mcp_wire.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/persistence_store.cpp.o -c /tmp/sparx-work/src/atomic_service/persistence_store.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/persistence_store.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/persistence_store.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/read_only_query.cpp.o -c /tmp/sparx-work/src/atomic_service/read_only_query.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/read_only_query.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/read_only_query.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/atomic_service/tool_registry.cpp.o -c /tmp/sparx-work/src/atomic_service/tool_registry.cpp",
+  "file": "/tmp/sparx-work/src/atomic_service/tool_registry.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/atomic_service/tool_registry.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/common/types.cpp.o -c /tmp/sparx-work/src/common/types.cpp",
+  "file": "/tmp/sparx-work/src/common/types.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/common/types.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/data_log/audit_writer.cpp.o -c /tmp/sparx-work/src/data_log/audit_writer.cpp",
+  "file": "/tmp/sparx-work/src/data_log/audit_writer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/data_log/audit_writer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/data_log/event_writer.cpp.o -c /tmp/sparx-work/src/data_log/event_writer.cpp",
+  "file": "/tmp/sparx-work/src/data_log/event_writer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/data_log/event_writer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/data_log/payload_guard.cpp.o -c /tmp/sparx-work/src/data_log/payload_guard.cpp",
+  "file": "/tmp/sparx-work/src/data_log/payload_guard.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/data_log/payload_guard.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/data_log/service_control.cpp.o -c /tmp/sparx-work/src/data_log/service_control.cpp",
+  "file": "/tmp/sparx-work/src/data_log/service_control.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/data_log/service_control.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/data_log/service_lifecycle.cpp.o -c /tmp/sparx-work/src/data_log/service_lifecycle.cpp",
+  "file": "/tmp/sparx-work/src/data_log/service_lifecycle.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/data_log/service_lifecycle.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/data_log/trace_query.cpp.o -c /tmp/sparx-work/src/data_log/trace_query.cpp",
+  "file": "/tmp/sparx-work/src/data_log/trace_query.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/data_log/trace_query.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/exception/exception_digest.cpp.o -c /tmp/sparx-work/src/exception/exception_digest.cpp",
+  "file": "/tmp/sparx-work/src/exception/exception_digest.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/exception/exception_digest.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/exception/exception_query.cpp.o -c /tmp/sparx-work/src/exception/exception_query.cpp",
+  "file": "/tmp/sparx-work/src/exception/exception_query.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/exception/exception_query.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/exception/exception_reporter.cpp.o -c /tmp/sparx-work/src/exception/exception_reporter.cpp",
+  "file": "/tmp/sparx-work/src/exception/exception_reporter.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/exception/exception_reporter.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/exception/observation_drain.cpp.o -c /tmp/sparx-work/src/exception/observation_drain.cpp",
+  "file": "/tmp/sparx-work/src/exception/observation_drain.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/exception/observation_drain.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/exception/service_lifecycle.cpp.o -c /tmp/sparx-work/src/exception/service_lifecycle.cpp",
+  "file": "/tmp/sparx-work/src/exception/service_lifecycle.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/exception/service_lifecycle.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/exception/state_mutation.cpp.o -c /tmp/sparx-work/src/exception/state_mutation.cpp",
+  "file": "/tmp/sparx-work/src/exception/state_mutation.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/exception/state_mutation.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/admission_controller.cpp.o -c /tmp/sparx-work/src/inference/admission_controller.cpp",
+  "file": "/tmp/sparx-work/src/inference/admission_controller.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/admission_controller.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/global_arbiter.cpp.o -c /tmp/sparx-work/src/inference/global_arbiter.cpp",
+  "file": "/tmp/sparx-work/src/inference/global_arbiter.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/global_arbiter.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/inference_events.cpp.o -c /tmp/sparx-work/src/inference/inference_events.cpp",
+  "file": "/tmp/sparx-work/src/inference/inference_events.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/inference_events.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/inference_framework_impl.cpp.o -c /tmp/sparx-work/src/inference/inference_framework_impl.cpp",
+  "file": "/tmp/sparx-work/src/inference/inference_framework_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/inference_framework_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/kv_coordinator.cpp.o -c /tmp/sparx-work/src/inference/kv_coordinator.cpp",
+  "file": "/tmp/sparx-work/src/inference/kv_coordinator.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/kv_coordinator.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/model_executor.cpp.o -c /tmp/sparx-work/src/inference/model_executor.cpp",
+  "file": "/tmp/sparx-work/src/inference/model_executor.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/model_executor.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/inference/model_runtime.cpp.o -c /tmp/sparx-work/src/inference/model_runtime.cpp",
+  "file": "/tmp/sparx-work/src/inference/model_runtime.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/inference/model_runtime.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent/bge_classifier.cpp.o -c /tmp/sparx-work/src/intent/bge_classifier.cpp",
+  "file": "/tmp/sparx-work/src/intent/bge_classifier.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent/bge_classifier.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent/intent_engine_impl.cpp.o -c /tmp/sparx-work/src/intent/intent_engine_impl.cpp",
+  "file": "/tmp/sparx-work/src/intent/intent_engine_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent/intent_engine_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent/mock_inference_path.cpp.o -c /tmp/sparx-work/src/intent/mock_inference_path.cpp",
+  "file": "/tmp/sparx-work/src/intent/mock_inference_path.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent/mock_inference_path.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent/model_decision_parser.cpp.o -c /tmp/sparx-work/src/intent/model_decision_parser.cpp",
+  "file": "/tmp/sparx-work/src/intent/model_decision_parser.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent/model_decision_parser.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent/query_batch_executor.cpp.o -c /tmp/sparx-work/src/intent/query_batch_executor.cpp",
+  "file": "/tmp/sparx-work/src/intent/query_batch_executor.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent/query_batch_executor.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent/skill_path.cpp.o -c /tmp/sparx-work/src/intent/skill_path.cpp",
+  "file": "/tmp/sparx-work/src/intent/skill_path.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent/skill_path.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent_support/deterministic_skill_adapter.cpp.o -c /tmp/sparx-work/src/intent_support/deterministic_skill_adapter.cpp",
+  "file": "/tmp/sparx-work/src/intent_support/deterministic_skill_adapter.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent_support/deterministic_skill_adapter.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent_support/intent_prompt_adapter.cpp.o -c /tmp/sparx-work/src/intent_support/intent_prompt_adapter.cpp",
+  "file": "/tmp/sparx-work/src/intent_support/intent_prompt_adapter.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent_support/intent_prompt_adapter.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/intent_support/module_factory_bridge.cpp.o -c /tmp/sparx-work/src/intent_support/module_factory_bridge.cpp",
+  "file": "/tmp/sparx-work/src/intent_support/module_factory_bridge.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/intent_support/module_factory_bridge.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/interaction/interaction_layer.cpp.o -c /tmp/sparx-work/src/interaction/interaction_layer.cpp",
+  "file": "/tmp/sparx-work/src/interaction/interaction_layer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/interaction/interaction_layer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/kv_cache/cache_invalidation.cpp.o -c /tmp/sparx-work/src/kv_cache/cache_invalidation.cpp",
+  "file": "/tmp/sparx-work/src/kv_cache/cache_invalidation.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/kv_cache/cache_invalidation.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/kv_cache/cache_publication.cpp.o -c /tmp/sparx-work/src/kv_cache/cache_publication.cpp",
+  "file": "/tmp/sparx-work/src/kv_cache/cache_publication.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/kv_cache/cache_publication.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/kv_cache/capacity_manager.cpp.o -c /tmp/sparx-work/src/kv_cache/capacity_manager.cpp",
+  "file": "/tmp/sparx-work/src/kv_cache/capacity_manager.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/kv_cache/capacity_manager.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/kv_cache/lease_acquisition.cpp.o -c /tmp/sparx-work/src/kv_cache/lease_acquisition.cpp",
+  "file": "/tmp/sparx-work/src/kv_cache/lease_acquisition.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/kv_cache/lease_acquisition.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/kv_cache/lease_completion.cpp.o -c /tmp/sparx-work/src/kv_cache/lease_completion.cpp",
+  "file": "/tmp/sparx-work/src/kv_cache/lease_completion.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/kv_cache/lease_completion.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/memory/memory_service.cpp.o -c /tmp/sparx-work/src/memory/memory_service.cpp",
+  "file": "/tmp/sparx-work/src/memory/memory_service.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/memory/memory_service.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/blocker_index.cpp.o -c /tmp/sparx-work/src/orchestrator/blocker_index.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/blocker_index.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/blocker_index.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/control_plane.cpp.o -c /tmp/sparx-work/src/orchestrator/control_plane.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/control_plane.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/control_plane.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/dag_validator.cpp.o -c /tmp/sparx-work/src/orchestrator/dag_validator.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/dag_validator.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/dag_validator.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/orchestrator_impl.cpp.o -c /tmp/sparx-work/src/orchestrator/orchestrator_impl.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/orchestrator_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/orchestrator_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/persistence_store.cpp.o -c /tmp/sparx-work/src/orchestrator/persistence_store.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/persistence_store.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/persistence_store.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/result_reconciler.cpp.o -c /tmp/sparx-work/src/orchestrator/result_reconciler.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/result_reconciler.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/result_reconciler.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/orchestrator/scheduler.cpp.o -c /tmp/sparx-work/src/orchestrator/scheduler.cpp",
+  "file": "/tmp/sparx-work/src/orchestrator/scheduler.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/orchestrator/scheduler.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/cleaner.cpp.o -c /tmp/sparx-work/src/preprocess/cleaner.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/cleaner.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/cleaner.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/host_test_state_provider.cpp.o -c /tmp/sparx-work/src/preprocess/host_test_state_provider.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/host_test_state_provider.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/host_test_state_provider.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/normalizer.cpp.o -c /tmp/sparx-work/src/preprocess/normalizer.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/normalizer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/normalizer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/preprocess_engine_impl.cpp.o -c /tmp/sparx-work/src/preprocess/preprocess_engine_impl.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/preprocess_engine_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/preprocess_engine_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/preprocess_observer.cpp.o -c /tmp/sparx-work/src/preprocess/preprocess_observer.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/preprocess_observer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/preprocess_observer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/request_validation.cpp.o -c /tmp/sparx-work/src/preprocess/request_validation.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/request_validation.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/request_validation.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/state_query_service_impl.cpp.o -c /tmp/sparx-work/src/preprocess/state_query_service_impl.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/state_query_service_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/state_query_service_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/time_aligner.cpp.o -c /tmp/sparx-work/src/preprocess/time_aligner.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/time_aligner.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/time_aligner.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/preprocess/vehicle_state_collector.cpp.o -c /tmp/sparx-work/src/preprocess/vehicle_state_collector.cpp",
+  "file": "/tmp/sparx-work/src/preprocess/vehicle_state_collector.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/preprocess/vehicle_state_collector.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/prompt/prompt_engine_impl.cpp.o -c /tmp/sparx-work/src/prompt/prompt_engine_impl.cpp",
+  "file": "/tmp/sparx-work/src/prompt/prompt_engine_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/prompt/prompt_engine_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/prompt/prompt_renderer.cpp.o -c /tmp/sparx-work/src/prompt/prompt_renderer.cpp",
+  "file": "/tmp/sparx-work/src/prompt/prompt_renderer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/prompt/prompt_renderer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/prompt/prompt_template_analyzer.cpp.o -c /tmp/sparx-work/src/prompt/prompt_template_analyzer.cpp",
+  "file": "/tmp/sparx-work/src/prompt/prompt_template_analyzer.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/prompt/prompt_template_analyzer.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/prompt/template_manager.cpp.o -c /tmp/sparx-work/src/prompt/template_manager.cpp",
+  "file": "/tmp/sparx-work/src/prompt/template_manager.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/prompt/template_manager.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/runtime/master_agent_runtime.cpp.o -c /tmp/sparx-work/src/runtime/master_agent_runtime.cpp",
+  "file": "/tmp/sparx-work/src/runtime/master_agent_runtime.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/runtime/master_agent_runtime.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/skill/skill_content_loader.cpp.o -c /tmp/sparx-work/src/skill/skill_content_loader.cpp",
+  "file": "/tmp/sparx-work/src/skill/skill_content_loader.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/skill/skill_content_loader.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/skill/skill_engine_impl.cpp.o -c /tmp/sparx-work/src/skill/skill_engine_impl.cpp",
+  "file": "/tmp/sparx-work/src/skill/skill_engine_impl.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/skill/skill_engine_impl.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/skill/skill_keyword_matcher.cpp.o -c /tmp/sparx-work/src/skill/skill_keyword_matcher.cpp",
+  "file": "/tmp/sparx-work/src/skill/skill_keyword_matcher.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/skill/skill_keyword_matcher.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/skill/skill_library_store.cpp.o -c /tmp/sparx-work/src/skill/skill_library_store.cpp",
+  "file": "/tmp/sparx-work/src/skill/skill_library_store.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/skill/skill_library_store.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/skill/skill_repository.cpp.o -c /tmp/sparx-work/src/skill/skill_repository.cpp",
+  "file": "/tmp/sparx-work/src/skill/skill_repository.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/skill/skill_repository.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/skill/skill_utils.cpp.o -c /tmp/sparx-work/src/skill/skill_utils.cpp",
+  "file": "/tmp/sparx-work/src/skill/skill_utils.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/skill/skill_utils.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/master_agent_core.dir/src/sub_agents/sub_agent.cpp.o -c /tmp/sparx-work/src/sub_agents/sub_agent.cpp",
+  "file": "/tmp/sparx-work/src/sub_agents/sub_agent.cpp",
+  "output": "CMakeFiles/master_agent_core.dir/src/sub_agents/sub_agent.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx_runtimes.dir/src/llama_cpp_model_runtime.cpp.o -c /tmp/sparx-work/cli/src/llama_cpp_model_runtime.cpp",
+  "file": "/tmp/sparx-work/cli/src/llama_cpp_model_runtime.cpp",
+  "output": "cli/CMakeFiles/sparx_runtimes.dir/src/llama_cpp_model_runtime.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx_runtimes.dir/src/genie_model_runtime.cpp.o -c /tmp/sparx-work/cli/src/genie_model_runtime.cpp",
+  "file": "/tmp/sparx-work/cli/src/genie_model_runtime.cpp",
+  "output": "cli/CMakeFiles/sparx_runtimes.dir/src/genie_model_runtime.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_main.cpp.o -c /tmp/sparx-work/cli/src/sparx_main.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_main.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_main.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_init.cpp.o -c /tmp/sparx-work/cli/src/cmd_init.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_init.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_init.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_add.cpp.o -c /tmp/sparx-work/cli/src/cmd_add.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_add.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_add.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_pull.cpp.o -c /tmp/sparx-work/cli/src/cmd_pull.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_pull.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_pull.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_run.cpp.o -c /tmp/sparx-work/cli/src/cmd_run.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_run.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_run.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_devices.cpp.o -c /tmp/sparx-work/cli/src/cmd_devices.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_devices.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_devices.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_deploy.cpp.o -c /tmp/sparx-work/cli/src/cmd_deploy.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_deploy.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_deploy.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_doctor.cpp.o -c /tmp/sparx-work/cli/src/cmd_doctor.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_doctor.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_doctor.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_demo.cpp.o -c /tmp/sparx-work/cli/src/cmd_demo.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_demo.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_demo.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_shell.cpp.o -c /tmp/sparx-work/cli/src/cmd_shell.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_shell.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_shell.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_plan.cpp.o -c /tmp/sparx-work/cli/src/cmd_plan.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_plan.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_plan.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_trace.cpp.o -c /tmp/sparx-work/cli/src/cmd_trace.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_trace.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_trace.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_learn.cpp.o -c /tmp/sparx-work/cli/src/cmd_learn.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_learn.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_learn.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_trace.cpp.o -c /tmp/sparx-work/cli/src/sparx_trace.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_trace.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_trace.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_learning.cpp.o -c /tmp/sparx-work/cli/src/sparx_learning.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_learning.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_learning.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_constrained_decode.cpp.o -c /tmp/sparx-work/cli/src/sparx_constrained_decode.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_constrained_decode.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_constrained_decode.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_speculative.cpp.o -c /tmp/sparx-work/cli/src/sparx_speculative.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_speculative.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_speculative.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_formal_verify.cpp.o -c /tmp/sparx-work/cli/src/sparx_formal_verify.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_formal_verify.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_formal_verify.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_mesh.cpp.o -c /tmp/sparx-work/cli/src/sparx_mesh.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_mesh.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_mesh.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/cmd_mesh.cpp.o -c /tmp/sparx-work/cli/src/cmd_mesh.cpp",
+  "file": "/tmp/sparx-work/cli/src/cmd_mesh.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/cmd_mesh.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_cloud_fusion.cpp.o -c /tmp/sparx-work/cli/src/sparx_cloud_fusion.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_cloud_fusion.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_cloud_fusion.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_transformer_predictor.cpp.o -c /tmp/sparx-work/cli/src/sparx_transformer_predictor.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_transformer_predictor.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_transformer_predictor.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_delta_crdt.cpp.o -c /tmp/sparx-work/cli/src/sparx_delta_crdt.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_delta_crdt.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_delta_crdt.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_smt_backend.cpp.o -c /tmp/sparx-work/cli/src/sparx_smt_backend.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_smt_backend.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_smt_backend.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/cli",
+  "command": "/usr/bin/c++ -DSPARX_BUILD_TARGET=\\\"Darwin-arm64\\\" -DSPARX_GIT_SHA=\\\"4780d97\\\" -DSPARX_HAS_CURL=1 -DSPARX_VERSION=\\\"2.2.1\\\" -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/sparx.dir/src/sparx_model_registry.cpp.o -c /tmp/sparx-work/cli/src/sparx_model_registry.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_model_registry.cpp",
+  "output": "cli/CMakeFiles/sparx.dir/src/sparx_model_registry.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_speculation.dir/speculation/eval_speculation.cpp.o -c /tmp/sparx-work/eval/speculation/eval_speculation.cpp",
+  "file": "/tmp/sparx-work/eval/speculation/eval_speculation.cpp",
+  "output": "eval/CMakeFiles/eval_speculation.dir/speculation/eval_speculation.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_speculation.dir/__/cli/src/sparx_speculative.cpp.o -c /tmp/sparx-work/cli/src/sparx_speculative.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_speculative.cpp",
+  "output": "eval/CMakeFiles/eval_speculation.dir/__/cli/src/sparx_speculative.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_mesh.dir/mesh/eval_mesh.cpp.o -c /tmp/sparx-work/eval/mesh/eval_mesh.cpp",
+  "file": "/tmp/sparx-work/eval/mesh/eval_mesh.cpp",
+  "output": "eval/CMakeFiles/eval_mesh.dir/mesh/eval_mesh.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_mesh.dir/__/cli/src/sparx_mesh.cpp.o -c /tmp/sparx-work/cli/src/sparx_mesh.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_mesh.cpp",
+  "output": "eval/CMakeFiles/eval_mesh.dir/__/cli/src/sparx_mesh.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_formal.dir/formal/eval_formal.cpp.o -c /tmp/sparx-work/eval/formal/eval_formal.cpp",
+  "file": "/tmp/sparx-work/eval/formal/eval_formal.cpp",
+  "output": "eval/CMakeFiles/eval_formal.dir/formal/eval_formal.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_formal.dir/__/cli/src/sparx_formal_verify.cpp.o -c /tmp/sparx-work/cli/src/sparx_formal_verify.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_formal_verify.cpp",
+  "output": "eval/CMakeFiles/eval_formal.dir/__/cli/src/sparx_formal_verify.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_learning.dir/learning/eval_learning.cpp.o -c /tmp/sparx-work/eval/learning/eval_learning.cpp",
+  "file": "/tmp/sparx-work/eval/learning/eval_learning.cpp",
+  "output": "eval/CMakeFiles/eval_learning.dir/learning/eval_learning.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_learning.dir/__/cli/src/sparx_learning.cpp.o -c /tmp/sparx-work/cli/src/sparx_learning.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_learning.cpp",
+  "output": "eval/CMakeFiles/eval_learning.dir/__/cli/src/sparx_learning.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_constrained.dir/constrained/eval_constrained.cpp.o -c /tmp/sparx-work/eval/constrained/eval_constrained.cpp",
+  "file": "/tmp/sparx-work/eval/constrained/eval_constrained.cpp",
+  "output": "eval/CMakeFiles/eval_constrained.dir/constrained/eval_constrained.cpp.o"
+},
+{
+  "directory": "/tmp/sparx-work/build/eval",
+  "command": "/usr/bin/c++  -I/tmp/sparx-work/cli/include -I/tmp/sparx-work/include -I/tmp/sparx-work/third_party -I/tmp/sparx-work/third_party/memory_short_term/include -O3 -DNDEBUG -std=c++17 -arch arm64 -o CMakeFiles/eval_constrained.dir/__/cli/src/sparx_constrained_decode.cpp.o -c /tmp/sparx-work/cli/src/sparx_constrained_decode.cpp",
+  "file": "/tmp/sparx-work/cli/src/sparx_constrained_decode.cpp",
+  "output": "eval/CMakeFiles/eval_constrained.dir/__/cli/src/sparx_constrained_decode.cpp.o"
+}
+]

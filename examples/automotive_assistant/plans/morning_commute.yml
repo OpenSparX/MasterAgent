@@ -1,0 +1,36 @@
+# Plan: Morning Commute
+# Speculative execution pre-computes this plan when user says "出发上班"
+
+name: morning_commute
+trigger: "出发上班"
+description: Automated morning commute sequence
+
+steps:
+  - skill: navigation
+    action: start_route
+    params:
+      destination: "$user.work_address"
+      route_preference: fastest
+      avoid: []
+
+  - skill: climate
+    action: set_temp
+    params:
+      temp_celsius: "$user.preferred_temp"
+      zone: all
+
+  - skill: media_control
+    action: play
+    params:
+      query: "$user.morning_playlist"
+      source: local
+
+verification:
+  pre_conditions:
+    - "vehicle.parked == true"
+    - "vehicle.doors_locked == false"
+  invariants:
+    - "AG (temp >= 16 && temp <= 30)"
+  post_conditions:
+    - "navigation.active == true"
+    - "media.playing == true"

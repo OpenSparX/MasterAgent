@@ -1,0 +1,65 @@
+# Smart Home Agent — OAK project configuration
+project:
+  name: smart-home-agent
+  version: "1.0.0"
+  description: Privacy-first smart home assistant
+  platform: generic-x86_64    # Mini PC, NUC, or any x86 device
+
+models:
+  - name: qwen3-4b
+    type: local
+    path: models/qwen3-4b-q4_k_m.gguf
+    role: default
+    context_length: 4096
+
+routing:
+  strategy: local_only
+  fallback_on_failure: false   # Never phone home
+
+agent:
+  system_prompt: |
+    You are a smart home assistant. You control lights, locks, appliances,
+    and scenes. Be helpful but respect privacy boundaries.
+    Never share device status with unauthorized users.
+    Keep responses conversational and brief.
+  max_turns: 15
+  memory:
+    episodic_ttl_hours: 168      # Remember routines for 7 days
+    consolidation_threshold: 3   # Promote to long-term after 3 uses
+
+mesh:
+  enabled: true
+  discovery: mdns
+  service_name: "_oak-home._tcp"
+  capabilities:
+    - lighting_control
+    - scene_management
+  share_state: false    # Private home — no cross-home sync
+
+access_control:
+  enabled: true
+  default_policy:
+    permissions:
+      - "tool:lighting.*"
+      - "tool:scenes.*"
+      - "memory:read:own"
+    denied:
+      - "tool:security.unlock"    # Must be explicitly granted
+      - "tool:security.disarm"
+  policies:
+    - name: owner
+      agent_pattern: "owner_*"
+      permissions: ["tool:*", "memory:*"]
+    - name: guest
+      agent_pattern: "guest_*"
+      permissions:
+        - "tool:lighting.set"
+        - "tool:scenes.activate"
+      denied:
+        - "tool:security.*"
+        - "tool:energy.*"
+      quota:
+        max_tool_calls: 50
+        max_runtime_ms: 300000
+
+skills_dir: skills

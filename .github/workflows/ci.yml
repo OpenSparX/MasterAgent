@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-13, macos-14]
+        include:
+          - os: ubuntu-22.04
+            cmake_flags: ""
+          - os: macos-13
+            cmake_flags: ""
+          - os: macos-14
+            cmake_flags: "-DCMAKE_OSX_ARCHITECTURES=arm64"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libcurl4-openssl-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DMASTER_AGENT_BUILD_TESTS=ON \
+            -DMASTER_AGENT_BUILD_CLI=ON \
+            ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --timeout 120
+
+      - name: Upload build artifacts
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sparx-linux-x64
+          path: build/cli/sparx
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: sudo apt-get install -y clang-tidy-15
+
+      - name: Run clang-tidy on Agent OS modules
+        run: |
+          clang-tidy-15 \
+            -p build \
+            --checks='-*,bugprone-*,performance-*,modernize-*,-modernize-use-trailing-return-type' \
+            cli/src/sparx_agent_scheduler.cpp \
+            cli/src/sparx_context_manager.cpp \
+            cli/src/sparx_memory_manager.cpp \
+            cli/src/sparx_access_control.cpp \
+            cli/src/sparx_tool_registry.cpp \
+            -- -std=c++17 -Icli/include -Isrc/include \
+               -Ithird_party/memory_short_term/include \
+               -Ithird_party \
+            || true  # Non-blocking for now
+
+  security-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify no Qualcomm-licensed files in public tree
+        run: |
+          echo "Checking for Qualcomm-headered files outside allowed directories..."
+          LEAKED=$(grep -rl "Confidential and Proprietary" --include="*.py" . \
+            | grep -v "genai_lib/" \
+            | grep -v "utilities/" \
+            | grep -v "qnn_model_prepare" \
+            || true)
+          if [ -n "$LEAKED" ]; then
+            echo "❌ FATAL: Qualcomm-licensed files found in public tree:"
+            echo "$LEAKED"
+            exit 1
+          fi
+          echo "✅ No Qualcomm-licensed files in public tree"
+
+      - name: Check for secrets in committed files
+        run: |
+          echo "Scanning for potential secrets..."
+          SECRETS=$(grep -rn --include="*.yml" --include="*.yaml" --include="*.json" \
+            -E "(api_key|secret|password|token)\s*[:=]\s*['\"][^$]" . \
+            | grep -v "api_key_env" \
+            | grep -v "_ENV" \
+            | grep -v "example" \
+            || true)
+          if [ -n "$SECRETS" ]; then
+            echo "⚠️ Potential hardcoded secrets found:"
+            echo "$SECRETS"
+            exit 1
+          fi
+          echo "✅ No hardcoded secrets detected"

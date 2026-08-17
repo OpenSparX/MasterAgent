@@ -1,0 +1,10 @@
+name: hello
+description: "Responds with a greeting."
+trigger:
+  patterns:
+    - "你好"
+    - "hello"
+    - "hi"
+handler:
+  type: deterministic
+  response: "你好！我是你的端侧 Agent，正在本地运行。有什么可以帮你的？"

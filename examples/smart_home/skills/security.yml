@@ -1,0 +1,76 @@
+# Security Skill — locks, cameras, alarm
+name: security
+version: "1.0.0"
+description: Home security management (restricted access)
+
+actions:
+  lock:
+    description: Lock a specific door
+    params:
+      - name: door
+        type: enum
+        values: [front, back, garage, all]
+        required: true
+    actuators: [smart_lock]
+    safety: non_blocking
+
+  unlock:
+    description: Unlock a specific door (requires owner permission)
+    params:
+      - name: door
+        type: enum
+        values: [front, back, garage]
+        required: true
+      - name: duration_seconds
+        type: number
+        default: 30
+        description: Auto-relock after this duration
+    actuators: [smart_lock]
+    safety: confirm_always
+    required_permission: "tool:security.unlock"
+
+  arm:
+    description: Arm the alarm system
+    params:
+      - name: mode
+        type: enum
+        values: [away, home, night]
+        default: away
+    actuators: [alarm_panel]
+
+  disarm:
+    description: Disarm the alarm system (requires owner permission)
+    params: []
+    required_permission: "tool:security.disarm"
+    safety: confirm_always
+
+  camera_snapshot:
+    description: Get current camera view
+    params:
+      - name: camera
+        type: enum
+        values: [front_door, backyard, garage, living_room]
+    returns:
+      image_path: string
+      timestamp: string
+      motion_detected: boolean
+
+  status:
+    description: Get overall security status
+    params: []
+    returns:
+      alarm_state: string
+      doors_locked: array
+      cameras_active: array
+      last_motion: string
+
+examples:
+  - input: "锁门"
+    action: lock
+    params: { door: all }
+
+  - input: "安防状态怎么样？"
+    action: status
+
+  - input: "我到家了，撤防"
+    action: disarm

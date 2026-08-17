@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"/tmp/sparx-work/build/cmake_install.cmake",
+		"/tmp/sparx-work/build/cli/cmake_install.cmake",
+		"/tmp/sparx-work/build/eval/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

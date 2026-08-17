@@ -1,0 +1,80 @@
+# Scenes Skill — multi-device scene management
+name: scenes
+version: "1.0.0"
+description: Coordinated multi-device scene activation
+
+actions:
+  activate:
+    description: Activate a predefined scene
+    params:
+      - name: scene
+        type: string
+        required: true
+        description: Scene name to activate
+    actuators: [zigbee_light, wifi_light, smart_plug, media_player]
+
+  create:
+    description: Define a new scene from current device states
+    params:
+      - name: name
+        type: string
+        required: true
+      - name: description
+        type: string
+      - name: devices
+        type: array
+        description: List of device:state pairs to capture
+
+  list:
+    description: List available scenes
+    params: []
+    returns:
+      scenes: array
+
+  delete:
+    description: Remove a scene definition
+    params:
+      - name: name
+        type: string
+        required: true
+
+builtin_scenes:
+  movie_night:
+    description: Dim lights, close blinds, turn on TV
+    actions:
+      - { skill: lighting, action: set, params: { room: living_room, brightness: 15, color_temp: 2700 } }
+      - { skill: lighting, action: set, params: { room: kitchen, state: off } }
+
+  good_morning:
+    description: Lights on, blinds open, start coffee
+    actions:
+      - { skill: lighting, action: set, params: { room: bedroom, brightness: 60, color_temp: 5000 } }
+      - { skill: lighting, action: set, params: { room: kitchen, brightness: 100 } }
+
+  away_mode:
+    description: All lights off, lock doors, arm alarm
+    actions:
+      - { skill: lighting, action: all_off }
+      - { skill: security, action: lock, params: { door: all } }
+      - { skill: security, action: arm, params: { mode: away } }
+
+  sleep:
+    description: Dim bedroom, all other lights off, lock, arm night
+    actions:
+      - { skill: lighting, action: set, params: { room: bedroom, brightness: 5, color_temp: 2700 } }
+      - { skill: lighting, action: all_off }  # Except bedroom
+      - { skill: security, action: lock, params: { door: all } }
+      - { skill: security, action: arm, params: { mode: night } }
+
+examples:
+  - input: "电影模式"
+    action: activate
+    params: { scene: movie_night }
+
+  - input: "我要睡了"
+    action: activate
+    params: { scene: sleep }
+
+  - input: "早上好"
+    action: activate
+    params: { scene: good_morning }

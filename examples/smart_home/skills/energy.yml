@@ -1,0 +1,70 @@
+# Energy Skill — power monitoring and optimization
+name: energy
+version: "1.0.0"
+description: Home energy monitoring, solar, and battery management
+
+actions:
+  current_usage:
+    description: Get real-time power consumption
+    params: []
+    returns:
+      total_watts: number
+      by_circuit: object
+      solar_generation_watts: number
+      battery_percent: number
+      grid_import_watts: number
+
+  history:
+    description: Get energy usage history
+    params:
+      - name: period
+        type: enum
+        values: [hour, day, week, month]
+        default: day
+    returns:
+      total_kwh: number
+      cost_estimate: number
+      peak_watts: number
+      solar_kwh: number
+
+  optimize:
+    description: Run energy optimization recommendations
+    params: []
+    returns:
+      suggestions: array
+      potential_savings_kwh: number
+
+  set_mode:
+    description: Set energy management mode
+    params:
+      - name: mode
+        type: enum
+        values: [normal, eco, peak_shaving, battery_priority]
+        default: normal
+    description: |
+      normal: standard operation
+      eco: minimize consumption (dim lights, reduce HVAC)
+      peak_shaving: use battery during peak rate hours
+      battery_priority: charge battery from solar first
+
+  schedule_appliance:
+    description: Schedule high-power appliance for off-peak hours
+    params:
+      - name: appliance
+        type: enum
+        values: [washer, dryer, dishwasher, ev_charger]
+      - name: latest_by
+        type: string
+        description: "Must complete by this time (HH:MM)"
+
+examples:
+  - input: "现在用了多少电？"
+    action: current_usage
+
+  - input: "这个月电费大概多少？"
+    action: history
+    params: { period: month }
+
+  - input: "切换到节能模式"
+    action: set_mode
+    params: { mode: eco }

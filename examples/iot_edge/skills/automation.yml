@@ -1,0 +1,78 @@
+# Automation Skill — rule-based sensor→actuator control
+name: automation
+version: "1.0.0"
+description: Event-driven automation rules with safety guarantees
+
+actions:
+  trigger_cooling:
+    description: Activate cooling system
+    params:
+      - name: zone
+        type: string
+        default: "all"
+      - name: target_temp
+        type: number
+    actuators: [hvac_valve, fan]
+    safety: bounded
+
+  trigger_irrigation:
+    description: Start irrigation cycle
+    params:
+      - name: zone
+        type: string
+        required: true
+      - name: duration_minutes
+        type: number
+        default: 15
+        max: 60
+    actuators: [water_valve]
+    safety: bounded
+
+  alert:
+    description: Send alert notification
+    params:
+      - name: severity
+        type: enum
+        values: [info, warning, critical]
+      - name: message
+        type: string
+        required: true
+      - name: channel
+        type: enum
+        values: [local_display, buzzer, mesh_broadcast]
+        default: local_display
+    safety: non_blocking
+
+  create_rule:
+    description: Define a new automation rule
+    params:
+      - name: name
+        type: string
+        required: true
+      - name: condition
+        type: string
+        description: "Expression like: sensor.temp > 35"
+      - name: action
+        type: string
+        description: "Action to execute when condition is met"
+      - name: cooldown_minutes
+        type: number
+        default: 5
+
+  list_rules:
+    description: List active automation rules
+    params: []
+    returns:
+      rules: array
+
+examples:
+  - input: "If temperature exceeds 35°C, turn on cooling"
+    action: create_rule
+    params:
+      name: "high_temp_cooling"
+      condition: "sensor.zone_a_temp > 35"
+      action: "automation.trigger_cooling(zone='a', target_temp=28)"
+
+  - input: "Start watering zone B for 20 minutes"
+    action: trigger_irrigation
+    params: { zone: "b", duration_minutes: 20 }

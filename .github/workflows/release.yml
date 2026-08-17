@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-release:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x64
+            artifact: sparx
+          - os: macos-13
+            target: macos-x64
+            artifact: sparx
+          - os: macos-14
+            target: macos-arm64
+            artifact: sparx
+            cmake_flags: "-DCMAKE_OSX_ARCHITECTURES=arm64"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libcurl4-openssl-dev
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DSPARX_VERSION=${{ steps.version.outputs.version }} \
+            -DMASTER_AGENT_BUILD_TESTS=OFF \
+            -DMASTER_AGENT_BUILD_CLI=ON \
+            ${{ matrix.cmake_flags || '' }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/cli/sparx dist/
+          cp README.md LICENSE dist/
+          cd dist && tar czf ../sparx-${{ matrix.target }}.tar.gz .
+
+      - name: Checksum
+        run: shasum -a 256 sparx-${{ matrix.target }}.tar.gz > sparx-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sparx-${{ matrix.target }}
+          path: |
+            sparx-${{ matrix.target }}.tar.gz
+            sparx-${{ matrix.target }}.tar.gz.sha256
+
+  create-release:
+    needs: build-release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') }}

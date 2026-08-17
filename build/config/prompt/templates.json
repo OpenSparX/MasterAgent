@@ -1,0 +1,12 @@
+{
+  "templates": [
+    {
+      "tpl_type": "default",
+      "content": "你是一个车载助手，你的任务是根据上下文和情感标签生成符合要求的文本。上下文：context={context}; 情感标签：mood={emotion_tag}"
+    },
+    {
+      "tpl_type": "nav",
+      "content": "你是导航助手，你的任务是根据上下文和用户指令生成符合要求的导航。上下文：memory={memory_context}; state={{vehicle_state}}; user={context}"
+    }
+  ]
+}

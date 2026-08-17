@@ -1,0 +1,57 @@
+# Navigation Skill — route planning and POI search
+name: navigation
+version: "1.0.0"
+description: Vehicle navigation and route management
+
+parameters:
+  - name: destination
+    type: string
+    required: true
+    description: Target address or POI name
+  - name: route_preference
+    type: enum
+    values: [fastest, shortest, scenic]
+    default: fastest
+  - name: avoid
+    type: array
+    items: string
+    description: Road types to avoid (tolls, highways, ferries)
+
+actions:
+  start_route:
+    description: Calculate and start navigation to destination
+    params: [destination, route_preference, avoid]
+    actuators: [display, audio]
+    safety: non_blocking
+
+  search_poi:
+    description: Search nearby points of interest
+    params:
+      - name: category
+        type: enum
+        values: [gas_station, restaurant, parking, charging, hospital]
+      - name: radius_km
+        type: number
+        default: 5.0
+
+  get_eta:
+    description: Get estimated time of arrival
+    params: []
+    returns: { eta_minutes: number, distance_km: number }
+
+  cancel_route:
+    description: Stop current navigation
+    params: []
+    safety: confirm_if_active
+
+examples:
+  - input: "导航到最近的加油站"
+    action: search_poi
+    params: { category: gas_station, radius_km: 3.0 }
+
+  - input: "带我去北京大兴机场，走最快的路"
+    action: start_route
+    params: { destination: "北京大兴国际机场", route_preference: fastest }
+
+  - input: "还有多久到？"
+    action: get_eta
