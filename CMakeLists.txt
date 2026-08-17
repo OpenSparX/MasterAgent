@@ -232,8 +232,10 @@ endif()
 # Prompt and Skill use runtime-managed JSON/text configuration. Mirror the
 # source configuration into the build tree so local executables and CTest share
 # the same relative paths as a source-tree launch.
-file(COPY "${CMAKE_SOURCE_DIR}/config"
-     DESTINATION "${CMAKE_BINARY_DIR}")
+if(EXISTS "${CMAKE_SOURCE_DIR}/config")
+    file(COPY "${CMAKE_SOURCE_DIR}/config"
+         DESTINATION "${CMAKE_BINARY_DIR}")
+endif()
 
 if(MASTER_AGENT_ENABLE_IPC AND _core_source_present)
     target_sources(master_agent_core PRIVATE
@@ -377,12 +379,21 @@ install(DIRECTORY third_party/nlohmann
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY "${MEMORY_SHORT_TERM_SOURCE_ROOT}/include/"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES README.md VERSION.json THIRD_PARTY_NOTICES.md
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent)
-install(DIRECTORY docs/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent/docs)
-install(DIRECTORY config/
-    DESTINATION config)
+install(FILES README.md VERSION.json
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent
+    OPTIONAL)
+if(EXISTS "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md")
+    install(FILES THIRD_PARTY_NOTICES.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent)
+endif()
+if(EXISTS "${CMAKE_SOURCE_DIR}/docs")
+    install(DIRECTORY docs/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent/docs)
+endif()
+if(EXISTS "${CMAKE_SOURCE_DIR}/config")
+    install(DIRECTORY config/
+        DESTINATION config)
+endif()
 
 configure_package_config_file(
     "${CMAKE_SOURCE_DIR}/cmake/MasterAgentConfig.cmake.in"
