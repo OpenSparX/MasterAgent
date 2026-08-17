@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Floating agent widget — the "desktop pet" bubble -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="56dp"
+    android:layout_height="56dp"
+    android:background="@drawable/agent_bubble_bg"
+    android:elevation="8dp">
+
+    <ImageView
+        android:id="@+id/agent_icon"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_agent"
+        android:contentDescription="@string/agent_description" />
+
+    <TextView
+        android:id="@+id/agent_status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:textSize="10sp"
+        android:textColor="#00FF88"
+        android:padding="2dp" />
+
+</FrameLayout>

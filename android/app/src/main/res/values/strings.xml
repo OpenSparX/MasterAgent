@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenSparX Agent</string>
+    <string name="agent_description">AI Agent companion</string>
+</resources>
