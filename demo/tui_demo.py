@@ -221,12 +221,20 @@ class CockpitScenario:
         draw_box(win, dag_y, 1, 9, 78, "Intent DAG — 有向无环图任务拆解")
         self._draw_dag(win, dag_y + 1)
 
-        # Left panel: Task pipeline
+        # Left panel: Task pipeline (only show tasks that DAG has revealed)
         panel_y = dag_y + 10
         draw_box(win, panel_y, 1, 8, 38, "任务流水线")
         row = panel_y + 1
         for label, pct in self.tasks.items():
-            draw_progress(win, row, 3, 34, pct, label)
+            # Tasks only appear after Planner generates them
+            if label == "语音意图解析":
+                draw_progress(win, row, 3, 34, pct, label)
+            elif label == "安全验证" and self.step >= 13:
+                draw_progress(win, row, 3, 34, pct, label)
+            elif label in ("空调调节", "音乐切换", "座椅按摩") and self.step >= 15:
+                draw_progress(win, row, 3, 34, pct, label)
+            elif self.step >= 15:
+                draw_progress(win, row, 3, 34, pct, label)
             row += 1
         if self.verified:
             try:
@@ -264,15 +272,16 @@ class CockpitScenario:
                 pass
 
     def _draw_dag(self, win, y):
-        """Draw the DAG topology with colored nodes based on agent status."""
-        # Node rendering helper
+        """Draw the DAG topology progressively — nodes appear as Planner generates them."""
+        edge_c = curses.color_pair(C_BORDER)
+        s = self.step
+
         def node(name, col_offset, row_offset):
             agent = self.agents.get(name, {"status": "idle"})
             st = agent["status"]
             color_map = {"active": C_PROGRESS_ACTIVE, "done": C_SUCCESS, "idle": C_DIM}
             c = color_map.get(st, C_DIM)
             icon = agent.get("icon", "·")
-            # Blink effect for active
             bold = curses.A_BOLD if st in ("active", "done") else 0
             label = f"[{icon}{name}]"
             try:
@@ -282,35 +291,82 @@ class CockpitScenario:
                 pass
             return col_offset + len(label)
 
-        # DAG layout:
-        #   [🎙Voice] ──→ [🧠Planner] ──→ [🔒Verifier] ──┬→ [❄️Climate]
-        #                                                  ├→ [🎵Media]
-        #                                                  └→ [💺Seat]
-        edge_c = curses.color_pair(C_BORDER)
+        r = 3  # main row in DAG box
+
         try:
-            # Row 0: main chain
-            r = 2
-            end1 = node("Voice", 4, r)
-            win.addstr(y + r, end1, " ──→ ", edge_c)
-            end2 = node("Planner", end1 + 5, r)
-            win.addstr(y + r, end2, " ──→ ", edge_c)
-            end3 = node("Verifier", end2 + 5, r)
-            win.addstr(y + r, end3, " ──┬→ ", edge_c)
-            node("Climate", end3 + 6, r)
+            # Phase: only Voice visible
+            if s < 10:
+                node("Voice", 4, r)
+                win.addstr(y + 1, 4, "等待语音识别完成...",
+                           curses.color_pair(C_DIM))
 
-            # Row 1: Media branch
-            win.addstr(y + r + 1, end3, "   ├→ ", edge_c)
-            node("Media", end3 + 6, r + 1)
+            # Phase: Voice done, Planner appears and starts thinking
+            elif s < 13:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                node("Planner", end1 + 5, r)
+                win.addstr(y + 1, 4, "Planner 正在分析意图，生成执行 DAG...",
+                           curses.color_pair(C_PROGRESS_ACTIVE))
+                # Show "thinking" dots animation
+                dots = "." * ((s - 10) % 4)
+                win.addstr(y + 5, 4, f"  规划中{dots}",
+                           curses.color_pair(C_PROGRESS_ACTIVE))
 
-            # Row 2: Seat branch
-            win.addstr(y + r + 2, end3, "   └→ ", edge_c)
-            node("Seat", end3 + 6, r + 2)
+            # Phase: Planner done → DAG unfolds! Verifier + downstream appear
+            elif s < 15:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                end2 = node("Planner", end1 + 5, r)
+                win.addstr(y + r, end2, " ──→ ", edge_c)
+                end3 = node("Verifier", end2 + 5, r)
+                # DAG just generated — show it expanding
+                win.addstr(y + 1, 4, "✦ DAG 已生成 — 发现 3 个并行子任务",
+                           curses.color_pair(C_SUCCESS) | curses.A_BOLD)
+                win.addstr(y + r, end3, " ──┬→ ?", edge_c)
+                win.addstr(y + r+1, end3, "   ├→ ?", edge_c)
+                win.addstr(y + r+2, end3, "   └→ ?", edge_c)
+                win.addstr(y + 6, 4, "验证安全约束后展开执行节点...",
+                           curses.color_pair(C_DIM))
 
-            # DAG annotation
-            win.addstr(y + 0, 4, "依赖关系: Voice → Planner → Verifier → {Climate ∥ Media ∥ Seat}",
-                       curses.color_pair(C_DIM))
-            win.addstr(y + 6, 4, "并行度: 3  临界路径: Voice→Planner→Verify→Climate  深度: 4",
-                       curses.color_pair(C_DIM))
+            # Phase: Verifier working → downstream nodes materialize
+            elif s < 26:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                end2 = node("Planner", end1 + 5, r)
+                win.addstr(y + r, end2, " ──→ ", edge_c)
+                end3 = node("Verifier", end2 + 5, r)
+                win.addstr(y + r, end3, " ──┬→ ", edge_c)
+                node("Climate", end3 + 6, r)
+                win.addstr(y + r + 1, end3, "   ├→ ", edge_c)
+                node("Media", end3 + 6, r + 1)
+                win.addstr(y + r + 2, end3, "   └→ ", edge_c)
+                node("Seat", end3 + 6, r + 2)
+                win.addstr(y + 1, 4,
+                           "✦ DAG 展开: Voice→Planner→Verify→{Climate∥Media∥Seat}",
+                           curses.color_pair(C_TITLE))
+                win.addstr(y + 6, 4,
+                           "并行度: 3  临界路径深度: 4  验证中...",
+                           curses.color_pair(C_DIM))
+
+            # Phase: Full execution — show complete DAG with all states
+            else:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                end2 = node("Planner", end1 + 5, r)
+                win.addstr(y + r, end2, " ──→ ", edge_c)
+                end3 = node("Verifier", end2 + 5, r)
+                win.addstr(y + r, end3, " ──┬→ ", edge_c)
+                node("Climate", end3 + 6, r)
+                win.addstr(y + r + 1, end3, "   ├→ ", edge_c)
+                node("Media", end3 + 6, r + 1)
+                win.addstr(y + r + 2, end3, "   └→ ", edge_c)
+                node("Seat", end3 + 6, r + 2)
+                win.addstr(y + 1, 4,
+                           "✓ DAG 执行中: Voice→Planner→Verify→{Climate∥Media∥Seat}",
+                           curses.color_pair(C_SUCCESS))
+                win.addstr(y + 6, 4,
+                           "并行度: 3  临界路径深度: 4  安全验证: PASS ✓",
+                           curses.color_pair(C_DIM))
         except curses.error:
             pass
             try:
@@ -474,7 +530,10 @@ class DroneScenario:
                 pass
 
     def _draw_dag(self, win, y):
-        """Draw the perception DAG with colored nodes."""
+        """Draw the perception DAG progressively as Planner generates it."""
+        edge_c = curses.color_pair(C_BORDER)
+        s = self.step
+
         def node(name, col_offset, row_offset):
             agent = self.agents.get(name, {"status": "idle"})
             st = agent["status"]
@@ -490,39 +549,78 @@ class DroneScenario:
                 pass
             return col_offset + len(label)
 
-        # DAG layout:
-        #                    ┌→ [📷Camera] ────┐
-        #  [🎙Voice]→[🧠Planner]─┤                ├→[👁Analyzer]→[📢Reporter]
-        #                    └→ [🌡IR Sensor]──┘
-        edge_c = curses.color_pair(C_BORDER)
+        r = 3  # main row
+
         try:
-            # Row 1 (top branch): Camera
-            win.addstr(y + 1, 28, "┌→ ", edge_c)
-            node("Camera", 31, 1)
-            win.addstr(y + 1, 42, " ───┐", edge_c)
+            # Phase: only Voice
+            if s < 10:
+                node("Voice", 4, r)
+                win.addstr(y + 1, 4, "等待语音识别...",
+                           curses.color_pair(C_DIM))
 
-            # Row 2 (main): Voice → Planner → ... → Analyzer → Reporter
-            end1 = node("Voice", 4, 2)
-            win.addstr(y + 2, end1, " ──→ ", edge_c)
-            end2 = node("Planner", end1 + 5, 2)
-            win.addstr(y + 2, end2, " ─┤", edge_c)
-            win.addstr(y + 2, 46, "├→ ", edge_c)
-            end3 = node("Analyzer", 49, 2)
-            win.addstr(y + 2, end3, " ──→ ", edge_c)
-            node("Reporter", end3 + 5, 2)
+            # Phase: Voice done, Planner thinking
+            elif s < 13:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                node("Planner", end1 + 5, r)
+                dots = "." * ((s - 10) % 4)
+                win.addstr(y + 1, 4, f"Planner 分析意图，构建感知 DAG{dots}",
+                           curses.color_pair(C_PROGRESS_ACTIVE))
+                win.addstr(y + 5, 4, "  推理: 目标='火情隐患' → 需要多模态感知",
+                           curses.color_pair(C_DIM))
 
-            # Row 3 (bottom branch): IR Sensor
-            win.addstr(y + 3, 28, "└→ ", edge_c)
-            node("IR Sensor", 31, 3)
-            win.addstr(y + 3, 43, "──┘", edge_c)
+            # Phase: DAG generated — parallel branches appear
+            elif s < 46:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                end2 = node("Planner", end1 + 5, r)
+                win.addstr(y + r, end2, " ─┤", edge_c)
+                # Top branch
+                win.addstr(y + r - 1, end2 + 3, "┌→ ", edge_c)
+                node("Camera", end2 + 6, r - 1)
+                win.addstr(y + r - 1, end2 + 18, "──┐", edge_c)
+                # Bottom branch
+                win.addstr(y + r + 1, end2 + 3, "└→ ", edge_c)
+                node("IR Sensor", end2 + 6, r + 1)
+                win.addstr(y + r + 1, end2 + 19, "─┘", edge_c)
+                # Merge point → Analyzer (show as ? until sensing done)
+                if s < 40:
+                    win.addstr(y + r, end2 + 21, "├→ ?", edge_c)
+                    win.addstr(y + 1, 4,
+                               "✦ DAG: 双光并行采集 → 待融合分析",
+                               curses.color_pair(C_TITLE))
+                else:
+                    win.addstr(y + r, end2 + 21, "├→ ", edge_c)
+                    node("Analyzer", end2 + 24, r)
+                    win.addstr(y + 1, 4,
+                               "✦ DAG: 采集完成 → 融合分析节点激活",
+                               curses.color_pair(C_TITLE))
+                win.addstr(y + 6, 4,
+                           "并行度: 2 (IR∥RGB)  模态: 红外+可见光",
+                           curses.color_pair(C_DIM))
 
-            # Annotations
-            win.addstr(y + 0, 4,
-                       "依赖: Voice→Planner→{Camera ∥ IR}→Analyzer→Reporter",
-                       curses.color_pair(C_DIM))
-            win.addstr(y + 5, 4,
-                       "并行度: 2 (双光融合)  临界路径深度: 5  模态: IR+RGB",
-                       curses.color_pair(C_DIM))
+            # Phase: Fusion + Report — full DAG visible
+            else:
+                end1 = node("Voice", 4, r)
+                win.addstr(y + r, end1, " ──→ ", edge_c)
+                end2 = node("Planner", end1 + 5, r)
+                win.addstr(y + r, end2, " ─┤", edge_c)
+                win.addstr(y + r - 1, end2 + 3, "┌→ ", edge_c)
+                node("Camera", end2 + 6, r - 1)
+                win.addstr(y + r - 1, end2 + 18, "──┐", edge_c)
+                win.addstr(y + r + 1, end2 + 3, "└→ ", edge_c)
+                node("IR Sensor", end2 + 6, r + 1)
+                win.addstr(y + r + 1, end2 + 19, "─┘", edge_c)
+                win.addstr(y + r, end2 + 21, "├→ ", edge_c)
+                end3 = node("Analyzer", end2 + 24, r)
+                win.addstr(y + r, end3, " ──→ ", edge_c)
+                node("Reporter", end3 + 5, r)
+                win.addstr(y + 1, 4,
+                           "✓ DAG 完整执行: Voice→Plan→{IR∥RGB}→Fuse→Report",
+                           curses.color_pair(C_SUCCESS))
+                win.addstr(y + 6, 4,
+                           "并行度: 2  临界路径深度: 5  全链路端侧推理",
+                           curses.color_pair(C_DIM))
         except curses.error:
             pass
 
