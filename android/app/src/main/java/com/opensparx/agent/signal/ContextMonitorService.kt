@@ -1,5 +1,9 @@
 package com.opensparx.agent.signal
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.hardware.Sensor
@@ -11,7 +15,10 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.IBinder
 import android.os.Bundle
+import androidx.core.app.NotificationCompat
+import com.opensparx.agent.R
 import com.opensparx.agent.jni.AgentBridge
+import com.opensparx.agent.ui.MainActivity
 import kotlinx.coroutines.*
 import java.util.Calendar
 
@@ -40,11 +47,45 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
     private var lastMotionMagnitude = 0.0
     private var stillnessCounter = 0
 
+    companion object {
+        const val CHANNEL_ID = "sparx_context_monitor"
+        const val NOTIFICATION_ID = 1002
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification())
         startSignalSources()
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Context Monitor",
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            description = "Monitors environmental signals for proactive agent"
+        }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("OpenSparX")
+            .setContentText("Context monitoring active")
+            .setSmallIcon(R.drawable.ic_agent)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .build()
     }
 
     override fun onDestroy() {

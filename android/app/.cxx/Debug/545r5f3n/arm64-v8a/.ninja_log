@@ -1,0 +1,7 @@
+# ninja log v5
+0	961	1786987342414798291	CMakeFiles/sparx_agent.dir/agent_jni.cpp.o	bd73800bf7a6fd33
+2	967	1786987342414638166	CMakeFiles/sparx_geniex.dir/geniex_backend_jni.cpp.o	63bc46e73e257f24
+1	1035	1786987342480566751	CMakeFiles/sparx_agent.dir/qnn_inference.cpp.o	79fae8d39a5b8e52
+967	1156	1786987342612999338	/tmp/sparx-work/android/app/build/intermediates/cxx/Debug/545r5f3n/obj/arm64-v8a/libsparx_geniex.so	f309e41fbc5dd1da
+1	1274	1786987342726545217	CMakeFiles/sparx_agent.dir/proactive_engine_android.cpp.o	ac039f2c3b5764e6
+1274	1331	1786987342786912511	/tmp/sparx-work/android/app/build/intermediates/cxx/Debug/545r5f3n/obj/arm64-v8a/libsparx_agent.so	646418c290dfc77b

@@ -12,11 +12,13 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <numeric>
+#include <random>
 #include <sstream>
 
 namespace sparx::speculation {
@@ -35,17 +37,542 @@ std::string trigramKey(const std::string& a, const std::string& b) {
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// LstmPredictor — Single-layer LSTM for intent sequence prediction
+// ---------------------------------------------------------------------------
+
+class LstmPredictor {
+public:
+    static constexpr size_t kEmbedDim = 64;
+    static constexpr size_t kHiddenDim = 64;
+    static constexpr size_t kConcatDim = kEmbedDim + kHiddenDim;  // 128
+
+    LstmPredictor(float learning_rate = 0.01f, float grad_clip = 5.0f)
+        : lr_(learning_rate), grad_clip_(grad_clip) {
+        xavierInit();
+    }
+
+    /// Register an intent in the vocabulary, returns its index.
+    size_t registerIntent(const std::string& intent) {
+        auto it = intent_to_idx_.find(intent);
+        if (it != intent_to_idx_.end()) return it->second;
+        size_t idx = idx_to_intent_.size();
+        intent_to_idx_[intent] = idx;
+        idx_to_intent_.push_back(intent);
+        // Grow output layer
+        growOutputLayer(idx + 1);
+        return idx;
+    }
+
+    size_t vocabSize() const { return idx_to_intent_.size(); }
+
+    /// Run forward pass over a sequence of embeddings, return softmax distribution.
+    std::vector<float> predict(const std::vector<EmbeddingVec>& seq) {
+        if (seq.empty() || idx_to_intent_.empty()) return {};
+        // Run LSTM over sequence
+        resetState();
+        for (const auto& x : seq) {
+            forwardStep(x);
+        }
+        // Output projection: logits = W_out * h + b_out
+        size_t num_intents = idx_to_intent_.size();
+        std::vector<float> logits(num_intents, 0.0f);
+        for (size_t i = 0; i < num_intents; ++i) {
+            float sum = b_out_[i];
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                sum += W_out_[i * kHiddenDim + j] * h_[j];
+            }
+            logits[i] = sum;
+        }
+        return softmax(logits);
+    }
+
+    /// Online learning: single SGD step given sequence and target intent.
+    void train(const std::vector<EmbeddingVec>& seq, size_t target_idx) {
+        if (seq.empty() || target_idx >= idx_to_intent_.size()) return;
+
+        // Forward pass (storing intermediates for BPTT)
+        size_t T = seq.size();
+        resetState();
+        // Store states for backprop
+        std::vector<std::array<float, kHiddenDim>> h_states(T + 1);
+        std::vector<std::array<float, kHiddenDim>> c_states(T + 1);
+        std::vector<std::array<float, kHiddenDim>> f_gates(T);
+        std::vector<std::array<float, kHiddenDim>> i_gates(T);
+        std::vector<std::array<float, kHiddenDim>> o_gates(T);
+        std::vector<std::array<float, kHiddenDim>> c_cands(T);
+
+        h_states[0].fill(0.0f);
+        c_states[0].fill(0.0f);
+
+        for (size_t t = 0; t < T; ++t) {
+            forwardStepCached(seq[t], h_states[t], c_states[t],
+                              h_states[t + 1], c_states[t + 1],
+                              f_gates[t], i_gates[t], o_gates[t], c_cands[t]);
+        }
+
+        // Copy final hidden state
+        for (size_t j = 0; j < kHiddenDim; ++j) h_[j] = h_states[T][j];
+
+        // Output logits and softmax
+        size_t num_intents = idx_to_intent_.size();
+        std::vector<float> logits(num_intents, 0.0f);
+        for (size_t i = 0; i < num_intents; ++i) {
+            float sum = b_out_[i];
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                sum += W_out_[i * kHiddenDim + j] * h_states[T][j];
+            }
+            logits[i] = sum;
+        }
+        std::vector<float> probs = softmax(logits);
+
+        // Cross-entropy gradient: dL/d_logits = probs - one_hot(target)
+        std::vector<float> d_logits(num_intents);
+        for (size_t i = 0; i < num_intents; ++i) {
+            d_logits[i] = probs[i] - (i == target_idx ? 1.0f : 0.0f);
+        }
+
+        // Gradient for output layer
+        std::vector<float> dW_out(num_intents * kHiddenDim, 0.0f);
+        std::vector<float> db_out(num_intents, 0.0f);
+        std::array<float, kHiddenDim> dh{};
+        dh.fill(0.0f);
+
+        for (size_t i = 0; i < num_intents; ++i) {
+            db_out[i] = d_logits[i];
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                dW_out[i * kHiddenDim + j] = d_logits[i] * h_states[T][j];
+                dh[j] += d_logits[i] * W_out_[i * kHiddenDim + j];
+            }
+        }
+
+        // BPTT through the LSTM (truncated to sequence length)
+        std::array<float, kHiddenDim> dc{};
+        dc.fill(0.0f);
+
+        // Accumulate LSTM weight gradients
+        std::vector<float> dW_f(kHiddenDim * kConcatDim, 0.0f);
+        std::vector<float> dW_i(kHiddenDim * kConcatDim, 0.0f);
+        std::vector<float> dW_o(kHiddenDim * kConcatDim, 0.0f);
+        std::vector<float> dW_c(kHiddenDim * kConcatDim, 0.0f);
+        std::array<float, kHiddenDim> db_f{}, db_i{}, db_o{}, db_c{};
+        db_f.fill(0.0f); db_i.fill(0.0f);
+        db_o.fill(0.0f); db_c.fill(0.0f);
+
+        for (int t = static_cast<int>(T) - 1; t >= 0; --t) {
+            // dh and dc coming from above
+            // o_gate contribution
+            std::array<float, kHiddenDim> tanh_c;
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                tanh_c[j] = std::tanh(c_states[t + 1][j]);
+            }
+
+            std::array<float, kHiddenDim> do_gate, dc_total, df_gate, di_gate, dc_cand;
+
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                do_gate[j] = dh[j] * tanh_c[j] * o_gates[t][j] * (1.0f - o_gates[t][j]);
+                dc_total[j] = dc[j] + dh[j] * o_gates[t][j] * (1.0f - tanh_c[j] * tanh_c[j]);
+                df_gate[j] = dc_total[j] * c_states[t][j] * f_gates[t][j] * (1.0f - f_gates[t][j]);
+                di_gate[j] = dc_total[j] * c_cands[t][j] * i_gates[t][j] * (1.0f - i_gates[t][j]);
+                dc_cand[j] = dc_total[j] * i_gates[t][j] * (1.0f - c_cands[t][j] * c_cands[t][j]);
+            }
+
+            // Build concatenated input [h_{t-1}, x_t]
+            std::array<float, kConcatDim> concat;
+            for (size_t j = 0; j < kHiddenDim; ++j) concat[j] = h_states[t][j];
+            for (size_t j = 0; j < kEmbedDim; ++j) concat[kHiddenDim + j] = seq[t][j];
+
+            // Accumulate weight gradients
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                db_f[j] += df_gate[j];
+                db_i[j] += di_gate[j];
+                db_o[j] += do_gate[j];
+                db_c[j] += dc_cand[j];
+                for (size_t k = 0; k < kConcatDim; ++k) {
+                    dW_f[j * kConcatDim + k] += df_gate[j] * concat[k];
+                    dW_i[j * kConcatDim + k] += di_gate[j] * concat[k];
+                    dW_o[j * kConcatDim + k] += do_gate[j] * concat[k];
+                    dW_c[j * kConcatDim + k] += dc_cand[j] * concat[k];
+                }
+            }
+
+            // Propagate gradients to h_{t-1} and dc for next iteration
+            dh.fill(0.0f);
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                for (size_t k = 0; k < kHiddenDim; ++k) {
+                    float grad_from_k = df_gate[k] * W_f_[k * kConcatDim + j]
+                                      + di_gate[k] * W_i_[k * kConcatDim + j]
+                                      + do_gate[k] * W_o_[k * kConcatDim + j]
+                                      + dc_cand[k] * W_c_[k * kConcatDim + j];
+                    dh[j] += grad_from_k;
+                }
+            }
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                dc[j] = dc_total[j] * f_gates[t][j];
+            }
+        }
+
+        // Clip gradients (global norm)
+        float grad_norm = computeGradNorm(dW_f, dW_i, dW_o, dW_c,
+                                           db_f, db_i, db_o, db_c,
+                                           dW_out, db_out);
+        float scale = 1.0f;
+        if (grad_norm > grad_clip_) {
+            scale = grad_clip_ / grad_norm;
+        }
+
+        // Apply SGD updates
+        applyGradients(W_f_, dW_f, scale);
+        applyGradients(W_i_, dW_i, scale);
+        applyGradients(W_o_, dW_o, scale);
+        applyGradients(W_c_, dW_c, scale);
+        applyBiasGradients(b_f_, db_f, scale);
+        applyBiasGradients(b_i_, db_i, scale);
+        applyBiasGradients(b_o_, db_o, scale);
+        applyBiasGradients(b_c_, db_c, scale);
+        applyGradients(W_out_, dW_out, scale);
+        applyVecGradients(b_out_, db_out, scale);
+    }
+
+    /// Save weights to binary file.
+    bool save(const std::string& path) const {
+        auto parent = std::filesystem::path(path).parent_path();
+        std::filesystem::create_directories(parent);
+
+        std::ofstream out(path, std::ios::binary);
+        if (!out) return false;
+
+        // Header: magic + version + vocab size
+        uint32_t magic = 0x4C53544D;  // "LSTM"
+        uint32_t version = 1;
+        uint32_t vocab_size = static_cast<uint32_t>(idx_to_intent_.size());
+        out.write(reinterpret_cast<const char*>(&magic), 4);
+        out.write(reinterpret_cast<const char*>(&version), 4);
+        out.write(reinterpret_cast<const char*>(&vocab_size), 4);
+
+        // Write vocab (length-prefixed strings)
+        for (const auto& name : idx_to_intent_) {
+            uint16_t len = static_cast<uint16_t>(name.size());
+            out.write(reinterpret_cast<const char*>(&len), 2);
+            out.write(name.data(), len);
+        }
+
+        // Write LSTM weights (4 gates)
+        out.write(reinterpret_cast<const char*>(W_f_.data()),
+                  W_f_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_i_.data()),
+                  W_i_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_o_.data()),
+                  W_o_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_c_.data()),
+                  W_c_.size() * sizeof(float));
+
+        // Biases
+        out.write(reinterpret_cast<const char*>(b_f_.data()), kHiddenDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(b_i_.data()), kHiddenDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(b_o_.data()), kHiddenDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(b_c_.data()), kHiddenDim * sizeof(float));
+
+        // Output layer
+        out.write(reinterpret_cast<const char*>(W_out_.data()),
+                  W_out_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(b_out_.data()),
+                  b_out_.size() * sizeof(float));
+
+        return out.good();
+    }
+
+    /// Load weights from binary file.
+    bool load(const std::string& path) {
+        if (!std::filesystem::exists(path)) return false;
+
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+
+        uint32_t magic = 0, version = 0, vocab_size = 0;
+        in.read(reinterpret_cast<char*>(&magic), 4);
+        in.read(reinterpret_cast<char*>(&version), 4);
+        in.read(reinterpret_cast<char*>(&vocab_size), 4);
+
+        if (magic != 0x4C53544D || version != 1) return false;
+
+        // Read vocab
+        intent_to_idx_.clear();
+        idx_to_intent_.clear();
+        for (uint32_t i = 0; i < vocab_size; ++i) {
+            uint16_t len = 0;
+            in.read(reinterpret_cast<char*>(&len), 2);
+            std::string name(len, '\0');
+            in.read(name.data(), len);
+            intent_to_idx_[name] = i;
+            idx_to_intent_.push_back(name);
+        }
+
+        // Read LSTM weights
+        in.read(reinterpret_cast<char*>(W_f_.data()), W_f_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(W_i_.data()), W_i_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(W_o_.data()), W_o_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(W_c_.data()), W_c_.size() * sizeof(float));
+
+        in.read(reinterpret_cast<char*>(b_f_.data()), kHiddenDim * sizeof(float));
+        in.read(reinterpret_cast<char*>(b_i_.data()), kHiddenDim * sizeof(float));
+        in.read(reinterpret_cast<char*>(b_o_.data()), kHiddenDim * sizeof(float));
+        in.read(reinterpret_cast<char*>(b_c_.data()), kHiddenDim * sizeof(float));
+
+        // Read output layer
+        growOutputLayer(vocab_size);
+        in.read(reinterpret_cast<char*>(W_out_.data()),
+                W_out_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(b_out_.data()),
+                b_out_.size() * sizeof(float));
+
+        return in.good();
+    }
+
+    const std::map<std::string, size_t>& intentIndex() const { return intent_to_idx_; }
+    const std::string& intentName(size_t idx) const { return idx_to_intent_[idx]; }
+
+private:
+    float lr_;
+    float grad_clip_;
+
+    // LSTM gate weights: each kHiddenDim x kConcatDim
+    std::vector<float> W_f_;  // forget gate
+    std::vector<float> W_i_;  // input gate
+    std::vector<float> W_o_;  // output gate
+    std::vector<float> W_c_;  // candidate cell
+
+    // LSTM gate biases: each kHiddenDim
+    std::array<float, kHiddenDim> b_f_;
+    std::array<float, kHiddenDim> b_i_;
+    std::array<float, kHiddenDim> b_o_;
+    std::array<float, kHiddenDim> b_c_;
+
+    // Output projection: num_intents x kHiddenDim + bias
+    std::vector<float> W_out_;
+    std::vector<float> b_out_;
+
+    // Hidden state and cell state
+    std::array<float, kHiddenDim> h_;
+    std::array<float, kHiddenDim> c_;
+
+    // Vocab mapping
+    std::map<std::string, size_t> intent_to_idx_;
+    std::vector<std::string> idx_to_intent_;
+
+    void xavierInit() {
+        const size_t gate_size = kHiddenDim * kConcatDim;
+        W_f_.resize(gate_size);
+        W_i_.resize(gate_size);
+        W_o_.resize(gate_size);
+        W_c_.resize(gate_size);
+
+        // Xavier uniform: U(-sqrt(6/(fan_in+fan_out)), sqrt(6/(fan_in+fan_out)))
+        float limit = std::sqrt(6.0f / static_cast<float>(kConcatDim + kHiddenDim));
+        std::mt19937 rng(42);  // deterministic seed for reproducibility
+        std::uniform_real_distribution<float> dist(-limit, limit);
+
+        for (auto& w : W_f_) w = dist(rng);
+        for (auto& w : W_i_) w = dist(rng);
+        for (auto& w : W_o_) w = dist(rng);
+        for (auto& w : W_c_) w = dist(rng);
+
+        // Forget gate bias = 1.0 (crucial for learning long-term dependencies)
+        b_f_.fill(1.0f);
+        b_i_.fill(0.0f);
+        b_o_.fill(0.0f);
+        b_c_.fill(0.0f);
+
+        h_.fill(0.0f);
+        c_.fill(0.0f);
+    }
+
+    void growOutputLayer(size_t new_size) {
+        size_t old_size = b_out_.size();
+        if (new_size <= old_size) return;
+
+        // Preserve existing weights, Xavier-init new ones
+        float limit = std::sqrt(6.0f / static_cast<float>(kHiddenDim + new_size));
+        std::mt19937 rng(static_cast<uint32_t>(old_size * 7 + 13));
+        std::uniform_real_distribution<float> dist(-limit, limit);
+
+        std::vector<float> new_W_out(new_size * kHiddenDim, 0.0f);
+        // Copy old weights
+        for (size_t i = 0; i < old_size; ++i) {
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                new_W_out[i * kHiddenDim + j] = W_out_[i * kHiddenDim + j];
+            }
+        }
+        // Init new rows
+        for (size_t i = old_size; i < new_size; ++i) {
+            for (size_t j = 0; j < kHiddenDim; ++j) {
+                new_W_out[i * kHiddenDim + j] = dist(rng);
+            }
+        }
+        W_out_ = std::move(new_W_out);
+
+        b_out_.resize(new_size, 0.0f);
+    }
+
+    void resetState() {
+        h_.fill(0.0f);
+        c_.fill(0.0f);
+    }
+
+    static float sigmoid(float x) {
+        return 1.0f / (1.0f + std::exp(-x));
+    }
+
+    void forwardStep(const EmbeddingVec& x) {
+        // Concatenate [h, x]
+        std::array<float, kConcatDim> concat;
+        for (size_t j = 0; j < kHiddenDim; ++j) concat[j] = h_[j];
+        for (size_t j = 0; j < kEmbedDim; ++j) concat[kHiddenDim + j] = x[j];
+
+        std::array<float, kHiddenDim> f, i, o, c_cand;
+
+        for (size_t j = 0; j < kHiddenDim; ++j) {
+            float sum_f = b_f_[j], sum_i = b_i_[j], sum_o = b_o_[j], sum_c = b_c_[j];
+            for (size_t k = 0; k < kConcatDim; ++k) {
+                sum_f += W_f_[j * kConcatDim + k] * concat[k];
+                sum_i += W_i_[j * kConcatDim + k] * concat[k];
+                sum_o += W_o_[j * kConcatDim + k] * concat[k];
+                sum_c += W_c_[j * kConcatDim + k] * concat[k];
+            }
+            f[j] = sigmoid(sum_f);
+            i[j] = sigmoid(sum_i);
+            o[j] = sigmoid(sum_o);
+            c_cand[j] = std::tanh(sum_c);
+        }
+
+        for (size_t j = 0; j < kHiddenDim; ++j) {
+            c_[j] = f[j] * c_[j] + i[j] * c_cand[j];
+            h_[j] = o[j] * std::tanh(c_[j]);
+        }
+    }
+
+    void forwardStepCached(
+        const EmbeddingVec& x,
+        const std::array<float, kHiddenDim>& h_prev,
+        const std::array<float, kHiddenDim>& c_prev,
+        std::array<float, kHiddenDim>& h_next,
+        std::array<float, kHiddenDim>& c_next,
+        std::array<float, kHiddenDim>& f_out,
+        std::array<float, kHiddenDim>& i_out,
+        std::array<float, kHiddenDim>& o_out,
+        std::array<float, kHiddenDim>& c_cand_out) {
+
+        std::array<float, kConcatDim> concat;
+        for (size_t j = 0; j < kHiddenDim; ++j) concat[j] = h_prev[j];
+        for (size_t j = 0; j < kEmbedDim; ++j) concat[kHiddenDim + j] = x[j];
+
+        for (size_t j = 0; j < kHiddenDim; ++j) {
+            float sum_f = b_f_[j], sum_i = b_i_[j], sum_o = b_o_[j], sum_c = b_c_[j];
+            for (size_t k = 0; k < kConcatDim; ++k) {
+                sum_f += W_f_[j * kConcatDim + k] * concat[k];
+                sum_i += W_i_[j * kConcatDim + k] * concat[k];
+                sum_o += W_o_[j * kConcatDim + k] * concat[k];
+                sum_c += W_c_[j * kConcatDim + k] * concat[k];
+            }
+            f_out[j] = sigmoid(sum_f);
+            i_out[j] = sigmoid(sum_i);
+            o_out[j] = sigmoid(sum_o);
+            c_cand_out[j] = std::tanh(sum_c);
+        }
+
+        for (size_t j = 0; j < kHiddenDim; ++j) {
+            c_next[j] = f_out[j] * c_prev[j] + i_out[j] * c_cand_out[j];
+            h_next[j] = o_out[j] * std::tanh(c_next[j]);
+        }
+    }
+
+    static std::vector<float> softmax(const std::vector<float>& logits) {
+        std::vector<float> result(logits.size());
+        float max_val = *std::max_element(logits.begin(), logits.end());
+        float sum = 0.0f;
+        for (size_t i = 0; i < logits.size(); ++i) {
+            result[i] = std::exp(logits[i] - max_val);
+            sum += result[i];
+        }
+        if (sum > 0.0f) {
+            for (auto& v : result) v /= sum;
+        }
+        return result;
+    }
+
+    float computeGradNorm(
+        const std::vector<float>& dW_f, const std::vector<float>& dW_i,
+        const std::vector<float>& dW_o, const std::vector<float>& dW_c,
+        const std::array<float, kHiddenDim>& db_f,
+        const std::array<float, kHiddenDim>& db_i,
+        const std::array<float, kHiddenDim>& db_o,
+        const std::array<float, kHiddenDim>& db_c,
+        const std::vector<float>& dW_out,
+        const std::vector<float>& db_out) const {
+
+        float norm_sq = 0.0f;
+        for (float v : dW_f) norm_sq += v * v;
+        for (float v : dW_i) norm_sq += v * v;
+        for (float v : dW_o) norm_sq += v * v;
+        for (float v : dW_c) norm_sq += v * v;
+        for (float v : db_f) norm_sq += v * v;
+        for (float v : db_i) norm_sq += v * v;
+        for (float v : db_o) norm_sq += v * v;
+        for (float v : db_c) norm_sq += v * v;
+        for (float v : dW_out) norm_sq += v * v;
+        for (float v : db_out) norm_sq += v * v;
+        return std::sqrt(norm_sq);
+    }
+
+    void applyGradients(std::vector<float>& W, const std::vector<float>& dW, float scale) {
+        for (size_t i = 0; i < W.size(); ++i) {
+            W[i] -= lr_ * scale * dW[i];
+        }
+    }
+
+    void applyBiasGradients(std::array<float, kHiddenDim>& b,
+                            const std::array<float, kHiddenDim>& db, float scale) {
+        for (size_t i = 0; i < kHiddenDim; ++i) {
+            b[i] -= lr_ * scale * db[i];
+        }
+    }
+
+    void applyVecGradients(std::vector<float>& b, const std::vector<float>& db, float scale) {
+        for (size_t i = 0; i < b.size(); ++i) {
+            b[i] -= lr_ * scale * db[i];
+        }
+    }
+};
+
+// ---------------------------------------------------------------------------
 // IntentPredictor
 // ---------------------------------------------------------------------------
 
 IntentPredictor::IntentPredictor(PredictionConfig config)
-    : config_(std::move(config)) {}
+    : config_(std::move(config)),
+      lstm_(std::make_unique<LstmPredictor>(config_.lstm_learning_rate,
+                                             config_.lstm_grad_clip)) {
+    // Attempt to load persisted LSTM weights
+    std::string lstm_path = config_.lstm_weights_path;
+    if (lstm_path.empty()) {
+        if (const char* home = std::getenv("HOME")) {
+            lstm_path = std::string(home) + "/.sparx/speculation/lstm.bin";
+        }
+    }
+    if (!lstm_path.empty()) {
+        lstm_->load(lstm_path);
+    }
+}
+
+IntentPredictor::~IntentPredictor() = default;
 
 void IntentPredictor::observe(const IntentRecord& record) {
     ++observation_count_;
 
     // Update canonical phrasing (most recent wins)
     canonical_phrasing_[record.intent_name] = record.raw_input;
+
+    // Register intent in LSTM vocab
+    lstm_->registerIntent(record.intent_name);
 
     // Exponential decay factor: λ = 0.1, age in days
     // Older observations count less: weight = exp(-0.1 * age_days)
@@ -77,6 +604,19 @@ void IntentPredictor::observe(const IntentRecord& record) {
         }
     }
 
+    // Level 3 LSTM online learning: train on recent history sequence
+    if (recent_history_.size() >= config_.lstm_min_history) {
+        // Build embedding sequence from recent history
+        std::vector<EmbeddingVec> seq;
+        seq.reserve(recent_history_.size());
+        for (const auto& r : recent_history_) {
+            seq.push_back(intent_embedder_.embed(r.intent_name));
+        }
+        // Target is the current intent
+        size_t target_idx = lstm_->registerIntent(record.intent_name);
+        lstm_->train(seq, target_idx);
+    }
+
     // Maintain history window
     recent_history_.push_back(record);
     while (recent_history_.size() > config_.history_window) {
@@ -94,8 +634,8 @@ std::vector<IntentPrediction> IntentPredictor::predict(
         std::chrono::duration_cast<std::chrono::hours>(
             std::chrono::system_clock::now().time_since_epoch()).count() % 24);
 
-    // Collect candidates with scores from all three models (using weighted counts)
-    std::map<std::string, float> scores;
+    // Collect candidates with scores from n-gram models (Level 1 & 2)
+    std::map<std::string, float> ngram_scores;
 
     // Level 1: Bigram P(B|A) with exponential decay
     auto bigram_it = transitions_weighted_.find(current_intent);
@@ -105,7 +645,7 @@ std::vector<IntentPrediction> IntentPredictor::predict(
         if (total > 0.0f) {
             for (const auto& [intent, weight] : bigram_it->second) {
                 float p = weight / total;
-                scores[intent] += p * (1.0f - config_.temporal_weight);
+                ngram_scores[intent] += p * (1.0f - config_.temporal_weight);
             }
         }
     }
@@ -120,13 +660,13 @@ std::vector<IntentPrediction> IntentPredictor::predict(
             if (total > 0.0f) {
                 for (const auto& [intent, weight] : temp_bigram->second) {
                     float p = weight / total;
-                    scores[intent] += p * config_.temporal_weight;
+                    ngram_scores[intent] += p * config_.temporal_weight;
                 }
             }
         }
     }
 
-    // Level 3: Trigram boost with decay
+    // Trigram boost (enhances Level 1&2 confidence, not a separate level)
     if (recent_history_.size() >= 2) {
         auto it = recent_history_.rbegin();
         const auto& prev1 = it->intent_name;
@@ -140,10 +680,43 @@ std::vector<IntentPrediction> IntentPredictor::predict(
                 for (const auto& [intent, weight] : tri_it->second) {
                     float p = weight / total;
                     // Trigram acts as a confidence multiplier
-                    scores[intent] *= (1.0f + p * 0.5f);
+                    ngram_scores[intent] *= (1.0f + p * 0.5f);
                 }
             }
         }
+    }
+
+    // Level 3: LSTM sequence prediction (when sufficient history)
+    std::map<std::string, float> lstm_scores;
+    bool use_lstm = (recent_history_.size() >= config_.lstm_min_history &&
+                     lstm_->vocabSize() > 0);
+
+    if (use_lstm) {
+        // Build embedding sequence from recent history
+        std::vector<EmbeddingVec> seq;
+        seq.reserve(recent_history_.size());
+        for (const auto& r : recent_history_) {
+            seq.push_back(intent_embedder_.embed(r.intent_name));
+        }
+        auto probs = lstm_->predict(seq);
+        for (size_t i = 0; i < probs.size(); ++i) {
+            if (probs[i] > 0.01f) {  // skip negligible probabilities
+                lstm_scores[lstm_->intentName(i)] = probs[i];
+            }
+        }
+    }
+
+    // Blend Level 1&2 (n-gram) and Level 3 (LSTM) via weighted ensemble
+    std::map<std::string, float> scores;
+    float w_ngram = use_lstm ? config_.ngram_weight : 1.0f;
+    float w_lstm = use_lstm ? config_.lstm_weight : 0.0f;
+
+    // Merge all candidate intents
+    for (const auto& [intent, score] : ngram_scores) {
+        scores[intent] += score * w_ngram;
+    }
+    for (const auto& [intent, score] : lstm_scores) {
+        scores[intent] += score * w_lstm;
     }
 
     // Sort by score and return top-k above threshold
@@ -164,7 +737,9 @@ std::vector<IntentPrediction> IntentPredictor::predict(
         auto phrasing_it = canonical_phrasing_.find(intent);
         pred.predicted_input = (phrasing_it != canonical_phrasing_.end())
             ? phrasing_it->second : intent;
-        pred.rationale = "bigram+temporal+trigram ensemble";
+        pred.rationale = use_lstm
+            ? "bigram+temporal+trigram+lstm ensemble"
+            : "bigram+temporal+trigram ensemble";
         results.push_back(std::move(pred));
     }
     return results;
@@ -216,6 +791,17 @@ void IntentPredictor::save() const {
         out << "}";
     }
     out << "\n}}\n";
+
+    // Save LSTM weights to binary file
+    std::string lstm_path = config_.lstm_weights_path;
+    if (lstm_path.empty()) {
+        if (const char* home = std::getenv("HOME")) {
+            lstm_path = std::string(home) + "/.sparx/speculation/lstm.bin";
+        }
+    }
+    if (!lstm_path.empty() && lstm_) {
+        lstm_->save(lstm_path);
+    }
 }
 
 void IntentPredictor::load() {

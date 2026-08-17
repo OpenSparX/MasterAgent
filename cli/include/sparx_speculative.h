@@ -56,6 +56,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -102,100 +103,20 @@ struct PredictionConfig {
     std::uint32_t cold_start_threshold = 10;
     /// History file path. Encrypted with device key.
     std::string history_path;  // defaults to ~/.sparx/speculation/history.jsonl
-};
 
-/**
- * @brief Predicts user's next intent from interaction history.
- *
- * Uses a multi-level model:
- *   1. Bigram: P(B|A) from transition counts
- *   2. Temporal: P(B|A, hour) — time-weighted bigram
- *   3. Sequence: P(B|A_{t-2}, A_{t-1}, hour, day) — trigram + context
- *
- * The final prediction is a weighted ensemble of all levels.
- */
-class IntentPredictor {
-public:
-    explicit IntentPredictor(PredictionConfig config = {});
-
-    /// Records a new intent observation (called after each user turn).
-    void observe(const IntentRecord& record);
-
-    /// Predicts the top-k most likely next intents.
-    std::vector<IntentPrediction> predict(std::uint32_t top_k = 3) const;
-
-    /// Returns true if enough history exists for meaningful predictions.
-    bool isWarmedUp() const;
-
-    /// Total number of observations recorded.
-    std::uint32_t observationCount() const { return observation_count_; }
-
-    /// Prediction accuracy over last N predictions.
-    float recentHitRate(std::uint32_t window = 20) const;
-
-    /// Persists model state to disk.
-    void save() const;
-
-    /// Loads model state from disk.
-    void load();
-
-private:
-    PredictionConfig config_;
-
-    // Weighted transition counts with exponential decay: transitions_weighted_[A][B] = weight
-    std::map<std::string, std::map<std::string, float>> transitions_weighted_;
-
-    // Temporal bigram with decay: temporal_weighted_[hour][A][B] = weight
-    std::map<std::uint8_t,
-        std::map<std::string, std::map<std::string, float>>>
-        temporal_transitions_weighted_;
-
-    // Trigram with decay: trigram_weighted_[A+B][C] = weight
-    std::map<std::string, std::map<std::string, float>> trigrams_weighted_;
-
-    // Recent history for context
-    std::deque<IntentRecord> recent_history_;
-
-    // Accuracy tracking
-    mutable std::deque<bool> prediction_hits_;
-    std::uint32_t observation_count_ = 0;
-
-    // Intent → most common phrasing (for pre-generating prompts)
-    std::map<std::string, std::string> canonical_phrasing_;
-};
-
-// ---------------------------------------------------------------------------
-// Speculation Cache
-// ---------------------------------------------------------------------------
-
-/// A cached speculative result, ready for instant delivery.
-struct SpeculativeResult {
-    std::string cache_key;          // intent + normalized input hash
-    std::string raw_output;         // pre-computed model response
-    std::string intent_name;        // which intent this serves
-    float prediction_confidence;    // how confident was the prediction
-    std::int64_t computed_at_utc;   // when speculation was computed
-    std::int64_t ttl_seconds;       // time-to-live (stale after this)
-    std::uint32_t token_count;      // output size
-    std::string model_id;           // model used for speculation
-    std::string context_hash;       // hash of conversation state at compute time
-    bool validated = false;         // set true when seal-checked at delivery
-};
-
-/// Configuration for the speculation cache.
-struct CacheConfig {
-    /// Maximum cached speculations.
-    std::uint32_t max_entries = 16;
-    /// Default TTL for cached results (seconds).
-    std::int64_t default_ttl_seconds = 300;  // 5 minutes
-    /// Maximum cache memory (bytes). Entries evicted LRU when exceeded.
-    std::size_t max_memory_bytes = 4 * 1024 * 1024;  // 4 MB
-    /// Invalidate on context change (new skill added, model changed, etc.)
-    bool invalidate_on_context_change = true;
-    /// Enable embedding-based similarity matching (fuzzy cache hit).
-    bool enable_similarity_match = true;
-    /// Minimum cosine similarity for fuzzy hit (0.0 = any match, 1.0 = exact).
-    float similarity_threshold = 0.85f;
+    // --- Level 3 LSTM ensemble weights ---
+    /// Weight for bigram+temporal (Level 1&2) in the ensemble.
+    float ngram_weight = 0.6f;
+    /// Weight for LSTM (Level 3) in the ensemble.
+    float lstm_weight = 0.4f;
+    /// Minimum history length before LSTM predictions are used.
+    std::uint32_t lstm_min_history = 10;
+    /// LSTM learning rate for online SGD.
+    float lstm_learning_rate = 0.01f;
+    /// Gradient clipping norm for LSTM training.
+    float lstm_grad_clip = 5.0f;
+    /// Path for LSTM binary weights file.
+    std::string lstm_weights_path;  // defaults to ~/.sparx/speculation/lstm.bin
 };
 
 // ---------------------------------------------------------------------------
@@ -212,7 +133,7 @@ using EmbeddingVec = std::array<float, kEmbeddingDim>;
 /**
  * @brief Lightweight on-device text embedder using SimHash over character n-grams.
  *
- * No external model dependency — pure CPU computation at ~1μs per embedding.
+ * No external model dependency — pure CPU computation at ~1us per embedding.
  * Uses locality-sensitive hashing: similar texts produce similar vectors.
  *
  * Algorithm:
@@ -267,6 +188,107 @@ private:
         EmbeddingVec vec;
     };
     std::vector<IndexEntry> entries_;
+};
+
+/**
+ * @brief Predicts user's next intent from interaction history.
+ *
+ * Uses a multi-level model:
+ *   1. Bigram: P(B|A) from transition counts
+ *   2. Temporal: P(B|A, hour) — time-weighted bigram
+ *   3. Sequence: P(B|A_{t-2}, A_{t-1}, hour, day) — trigram + context
+ *
+ * The final prediction is a weighted ensemble of all levels.
+ */
+class LstmPredictor;  // Defined in sparx_speculative.cpp
+
+class IntentPredictor {
+public:
+    explicit IntentPredictor(PredictionConfig config = {});
+    ~IntentPredictor();
+
+    /// Records a new intent observation (called after each user turn).
+    void observe(const IntentRecord& record);
+
+    /// Predicts the top-k most likely next intents.
+    std::vector<IntentPrediction> predict(std::uint32_t top_k = 3) const;
+
+    /// Returns true if enough history exists for meaningful predictions.
+    bool isWarmedUp() const;
+
+    /// Total number of observations recorded.
+    std::uint32_t observationCount() const { return observation_count_; }
+
+    /// Prediction accuracy over last N predictions.
+    float recentHitRate(std::uint32_t window = 20) const;
+
+    /// Persists model state to disk.
+    void save() const;
+
+    /// Loads model state from disk.
+    void load();
+
+private:
+    PredictionConfig config_;
+
+    // Weighted transition counts with exponential decay: transitions_weighted_[A][B] = weight
+    std::map<std::string, std::map<std::string, float>> transitions_weighted_;
+
+    // Temporal bigram with decay: temporal_weighted_[hour][A][B] = weight
+    std::map<std::uint8_t,
+        std::map<std::string, std::map<std::string, float>>>
+        temporal_transitions_weighted_;
+
+    // Trigram with decay: trigram_weighted_[A+B][C] = weight
+    std::map<std::string, std::map<std::string, float>> trigrams_weighted_;
+
+    // Recent history for context
+    std::deque<IntentRecord> recent_history_;
+
+    // Accuracy tracking
+    mutable std::deque<bool> prediction_hits_;
+    std::uint32_t observation_count_ = 0;
+
+    // Intent → most common phrasing (for pre-generating prompts)
+    std::map<std::string, std::string> canonical_phrasing_;
+
+    // Level 3: Lightweight LSTM intent predictor
+    mutable std::unique_ptr<LstmPredictor> lstm_;
+    EmbeddingIndex intent_embedder_;  // shared embedder for intent names
+};
+
+// ---------------------------------------------------------------------------
+// Speculation Cache
+// ---------------------------------------------------------------------------
+
+/// A cached speculative result, ready for instant delivery.
+struct SpeculativeResult {
+    std::string cache_key;          // intent + normalized input hash
+    std::string raw_output;         // pre-computed model response
+    std::string intent_name;        // which intent this serves
+    float prediction_confidence;    // how confident was the prediction
+    std::int64_t computed_at_utc;   // when speculation was computed
+    std::int64_t ttl_seconds;       // time-to-live (stale after this)
+    std::uint32_t token_count;      // output size
+    std::string model_id;           // model used for speculation
+    std::string context_hash;       // hash of conversation state at compute time
+    bool validated = false;         // set true when seal-checked at delivery
+};
+
+/// Configuration for the speculation cache.
+struct CacheConfig {
+    /// Maximum cached speculations.
+    std::uint32_t max_entries = 16;
+    /// Default TTL for cached results (seconds).
+    std::int64_t default_ttl_seconds = 300;  // 5 minutes
+    /// Maximum cache memory (bytes). Entries evicted LRU when exceeded.
+    std::size_t max_memory_bytes = 4 * 1024 * 1024;  // 4 MB
+    /// Invalidate on context change (new skill added, model changed, etc.)
+    bool invalidate_on_context_change = true;
+    /// Enable embedding-based similarity matching (fuzzy cache hit).
+    bool enable_similarity_match = true;
+    /// Minimum cosine similarity for fuzzy hit (0.0 = any match, 1.0 = exact).
+    float similarity_threshold = 0.85f;
 };
 
 /**

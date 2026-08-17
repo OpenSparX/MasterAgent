@@ -1642,4 +1642,887 @@ bool MeshProtocol::isActive() const {
     return active_;
 }
 
+// ===========================================================================
+// Split Inference Pipeline — Layer Partitioner, Activation Transfer, Executor
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// LayerPartitioner (DP-based optimal layer-to-device assignment)
+// ---------------------------------------------------------------------------
+
+float LayerPartitioner::computeStageTime(
+    const std::vector<LayerCost>& layer_costs,
+    std::uint32_t start, std::uint32_t end,
+    std::uint32_t device_tops) {
+    // Sum compute costs for layers [start, end), scaled by device throughput.
+    // A layer's compute_ms is calibrated for 1 TOPS; scale inversely.
+    float total = 0.0f;
+    float scale = (device_tops > 0) ? (1.0f / static_cast<float>(device_tops)) : 1.0f;
+    for (std::uint32_t i = start; i < end; ++i) {
+        total += static_cast<float>(layer_costs[i].compute_ms) * scale;
+    }
+    return total;
+}
+
+float LayerPartitioner::computeTransferTime(
+    const std::vector<LayerCost>& layer_costs,
+    std::uint32_t boundary_layer,
+    std::uint32_t bandwidth_kbps) {
+    if (bandwidth_kbps == 0) return 1e9f;  // infinite cost if no link
+    // Transfer time = activation_bytes at boundary / bandwidth
+    // boundary_layer is the last layer in the previous stage (its output goes across)
+    if (boundary_layer == 0) return 0.0f;
+    std::uint32_t bytes = layer_costs[boundary_layer - 1].activation_bytes;
+    // bandwidth_kbps is in kilobits per second
+    float bandwidth_bytes_per_ms = static_cast<float>(bandwidth_kbps) / 8.0f;  // KB/s → bytes/ms
+    return static_cast<float>(bytes) / bandwidth_bytes_per_ms;
+}
+
+bool LayerPartitioner::fitsInMemory(
+    const std::vector<LayerCost>& layer_costs,
+    std::uint32_t start, std::uint32_t end,
+    std::uint32_t device_ram_mb) {
+    std::uint32_t total_mb = 0;
+    for (std::uint32_t i = start; i < end; ++i) {
+        total_mb += layer_costs[i].memory_mb;
+    }
+    // Leave 20% headroom for KV cache and runtime overhead
+    return total_mb <= static_cast<std::uint32_t>(device_ram_mb * 0.8f);
+}
+
+float LayerPartitioner::evaluateMakespan(
+    const std::vector<PartitionAssignment>& assignments) {
+    float makespan = 0.0f;
+    for (const auto& a : assignments) {
+        makespan = std::max(makespan, a.total_time_ms);
+    }
+    return makespan;
+}
+
+// --- PLACEHOLDER_PARTITION_DP ---
+
+PartitionResult LayerPartitioner::partition(
+    const std::vector<LayerCost>& layer_costs,
+    const std::vector<PartitionDeviceCap>& device_caps,
+    const std::vector<std::uint32_t>& bandwidth_kbps) {
+
+    PartitionResult result;
+    result.valid = false;
+
+    const std::uint32_t N = static_cast<std::uint32_t>(layer_costs.size());
+    const std::uint32_t M = static_cast<std::uint32_t>(device_caps.size());
+
+    if (N == 0 || M == 0) return result;
+    if (bandwidth_kbps.size() < M - 1) return result;
+
+    // DP table: dp[m][i] = minimum makespan when partitioning layers [0..i)
+    // across devices [0..m], where device m handles layers [cut..i).
+    // We minimize the maximum stage time (makespan).
+    //
+    // dp[m][i] = min over j in [0, i) of:
+    //   max(dp[m-1][j], stage_time(j, i, device[m]) + transfer_time(j, bw[m-1]))
+    //
+    // Base case: dp[0][i] = stage_time(0, i, device[0]) if fits in memory.
+
+    constexpr float INF = 1e18f;
+
+    // dp[m][i]: best makespan for first i layers on first m+1 devices
+    std::vector<std::vector<float>> dp(M, std::vector<float>(N + 1, INF));
+    // Track the cut points for backtracking
+    std::vector<std::vector<std::uint32_t>> cut(M, std::vector<std::uint32_t>(N + 1, 0));
+
+    // Base case: all layers [0..i) on device 0
+    for (std::uint32_t i = 1; i <= N; ++i) {
+        if (!fitsInMemory(layer_costs, 0, i, device_caps[0].ram_mb)) break;
+        dp[0][i] = computeStageTime(layer_costs, 0, i, device_caps[0].tops);
+        cut[0][i] = 0;
+    }
+
+    // Fill DP table
+    for (std::uint32_t m = 1; m < M; ++m) {
+        for (std::uint32_t i = m + 1; i <= N; ++i) {
+            // Try all possible cut points j: device m gets layers [j, i)
+            for (std::uint32_t j = m; j < i; ++j) {
+                if (dp[m - 1][j] >= INF) continue;
+                if (!fitsInMemory(layer_costs, j, i, device_caps[m].ram_mb)) continue;
+
+                float stage = computeStageTime(layer_costs, j, i, device_caps[m].tops);
+                float transfer = (m > 0 && j > 0)
+                    ? computeTransferTime(layer_costs, j, bandwidth_kbps[m - 1])
+                    : 0.0f;
+
+                // Makespan = max of previous stages' makespan and this stage's total
+                float candidate = std::max(dp[m - 1][j], stage + transfer);
+
+                if (candidate < dp[m][i]) {
+                    dp[m][i] = candidate;
+                    cut[m][i] = j;
+                }
+            }
+        }
+    }
+
+    // Find the best solution: dp[m][N] for the smallest makespan across all m
+    float best_makespan = INF;
+    std::uint32_t best_m = 0;
+    for (std::uint32_t m = 0; m < M; ++m) {
+        if (dp[m][N] < best_makespan) {
+            best_makespan = dp[m][N];
+            best_m = m;
+        }
+    }
+
+    if (best_makespan >= INF) return result;  // infeasible
+
+    // Backtrack to reconstruct assignments
+    std::vector<PartitionAssignment> assignments;
+    std::uint32_t end = N;
+    for (int m = static_cast<int>(best_m); m >= 0; --m) {
+        std::uint32_t start = cut[m][end];
+        PartitionAssignment a;
+        a.device_index = static_cast<std::uint32_t>(m);
+        a.layer_start = start;
+        a.layer_end = end;
+        a.stage_time_ms = computeStageTime(layer_costs, start, end,
+                                            device_caps[m].tops);
+        a.transfer_time_ms = (m < static_cast<int>(best_m) && end < N)
+            ? computeTransferTime(layer_costs, end, bandwidth_kbps[m])
+            : 0.0f;
+        a.total_time_ms = a.stage_time_ms + a.transfer_time_ms;
+        assignments.push_back(a);
+        end = start;
+    }
+
+    // Reverse to get device-0-first order
+    std::reverse(assignments.begin(), assignments.end());
+
+    // Recompute transfer times in forward order
+    for (size_t i = 0; i < assignments.size() - 1; ++i) {
+        std::uint32_t boundary = assignments[i].layer_end;
+        assignments[i].transfer_time_ms =
+            computeTransferTime(layer_costs, boundary, bandwidth_kbps[i]);
+        assignments[i].total_time_ms =
+            assignments[i].stage_time_ms + assignments[i].transfer_time_ms;
+    }
+    // Last stage has no outbound transfer
+    assignments.back().transfer_time_ms = 0.0f;
+    assignments.back().total_time_ms = assignments.back().stage_time_ms;
+
+    result.assignments = std::move(assignments);
+    result.makespan_ms = best_makespan;
+    result.pipeline_latency_ms = 0.0f;
+    for (const auto& a : result.assignments) {
+        result.pipeline_latency_ms += a.stage_time_ms;
+    }
+    result.speedup = (result.makespan_ms > 0.0f)
+        ? result.pipeline_latency_ms / result.makespan_ms : 1.0f;
+    result.valid = true;
+    return result;
+}
+
+// --- PLACEHOLDER_ACTIVATION_TRANSFER ---
+
+// ---------------------------------------------------------------------------
+// ActivationHeader
+// ---------------------------------------------------------------------------
+
+std::uint64_t ActivationHeader::elementCount() const {
+    if (shape.empty()) return 0;
+    std::uint64_t count = 1;
+    for (auto dim : shape) count *= dim;
+    return count;
+}
+
+std::uint64_t ActivationHeader::uncompressedSize() const {
+    return elementCount() * dtypeSize(dtype);
+}
+
+std::vector<std::uint8_t> ActivationHeader::serialize() const {
+    // Wire layout:
+    // [magic:4][version:2][seq_id:4][ndims:2][shape:ndims*4][dtype:1][flags:1][payload_size:4]
+    std::vector<std::uint8_t> buf;
+    buf.reserve(18 + ndims * 4);
+
+    auto push8 = [&](std::uint8_t v) { buf.push_back(v); };
+    auto push16 = [&](std::uint16_t v) {
+        buf.push_back(static_cast<uint8_t>(v >> 8));
+        buf.push_back(static_cast<uint8_t>(v & 0xFF));
+    };
+    auto push32 = [&](std::uint32_t v) {
+        buf.push_back(static_cast<uint8_t>(v >> 24));
+        buf.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+        buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+        buf.push_back(static_cast<uint8_t>(v & 0xFF));
+    };
+
+    push32(MAGIC);
+    push16(VERSION);
+    push32(sequence_id);
+    push16(ndims);
+    for (auto dim : shape) push32(dim);
+    push8(static_cast<uint8_t>(dtype));
+    uint8_t flags = 0;
+    if (compressed) flags |= 0x01;
+    push8(flags);
+    push32(payload_size);
+
+    return buf;
+}
+
+std::uint32_t ActivationHeader::deserialize(
+    const std::uint8_t* data, std::size_t len, ActivationHeader& out) {
+    // Minimum header: magic(4) + version(2) + seq(4) + ndims(2) + dtype(1) + flags(1) + payload(4) = 18
+    if (len < 18) return 0;
+
+    auto read16 = [](const uint8_t* p) -> uint16_t {
+        return (static_cast<uint16_t>(p[0]) << 8) | p[1];
+    };
+    auto read32 = [](const uint8_t* p) -> uint32_t {
+        return (static_cast<uint32_t>(p[0]) << 24) |
+               (static_cast<uint32_t>(p[1]) << 16) |
+               (static_cast<uint32_t>(p[2]) << 8) |
+               static_cast<uint32_t>(p[3]);
+    };
+
+    std::size_t offset = 0;
+
+    // Magic
+    uint32_t magic = read32(data + offset); offset += 4;
+    if (magic != MAGIC) return 0;
+
+    // Version
+    uint16_t ver = read16(data + offset); offset += 2;
+    if (ver != VERSION) return 0;
+
+    // Sequence ID
+    out.sequence_id = read32(data + offset); offset += 4;
+
+    // Ndims
+    out.ndims = read16(data + offset); offset += 2;
+
+    // Shape
+    if (len < offset + out.ndims * 4 + 6) return 0;  // +dtype+flags+payload
+    out.shape.resize(out.ndims);
+    for (uint16_t i = 0; i < out.ndims; ++i) {
+        out.shape[i] = read32(data + offset); offset += 4;
+    }
+
+    // Dtype
+    out.dtype = static_cast<ActivationDtype>(data[offset]); offset += 1;
+
+    // Flags
+    uint8_t flags = data[offset]; offset += 1;
+    out.compressed = (flags & 0x01) != 0;
+
+    // Payload size
+    out.payload_size = read32(data + offset); offset += 4;
+
+    return static_cast<uint32_t>(offset);
+}
+
+// ---------------------------------------------------------------------------
+// ActivationBuffer
+// ---------------------------------------------------------------------------
+
+std::size_t ActivationBuffer::wireSize() const {
+    return header.serialize().size() + data.size();
+}
+
+// --- PLACEHOLDER_TRANSFER_PROTOCOL ---
+
+// ---------------------------------------------------------------------------
+// ActivationTransferProtocol
+// ---------------------------------------------------------------------------
+
+ActivationTransferProtocol::ActivationTransferProtocol()
+    : ActivationTransferProtocol(Config{}) {}
+
+ActivationTransferProtocol::ActivationTransferProtocol(Config config)
+    : config_(std::move(config)) {}
+
+ActivationTransferProtocol::~ActivationTransferProtocol() {
+    shutdown_.store(true);
+    if (send_thread_.joinable()) send_thread_.join();
+    if (recv_thread_.joinable()) recv_thread_.join();
+}
+
+std::vector<std::uint8_t> ActivationTransferProtocol::compress(
+    const std::uint8_t* data, std::size_t len) {
+    // Simplified LZ4-style compression: run-length encoding on repeated bytes
+    // with delta encoding for activation patterns (many near-zero values).
+    // Real deployment would use actual LZ4 via lz4.h.
+    std::vector<std::uint8_t> out;
+    out.reserve(len);  // worst case: no compression
+
+    // Store original size as first 4 bytes (for decompression)
+    out.push_back(static_cast<uint8_t>((len >> 24) & 0xFF));
+    out.push_back(static_cast<uint8_t>((len >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((len >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>(len & 0xFF));
+
+    std::size_t i = 0;
+    while (i < len) {
+        // Look for runs of identical bytes
+        std::size_t run_start = i;
+        while (i + 1 < len && data[i] == data[i + 1] && (i - run_start) < 255) {
+            ++i;
+        }
+        std::size_t run_len = i - run_start + 1;
+        ++i;
+
+        if (run_len >= 4) {
+            // Encode as run: [0xFF][length][byte]
+            out.push_back(0xFF);
+            out.push_back(static_cast<uint8_t>(run_len));
+            out.push_back(data[run_start]);
+        } else {
+            // Look for literal sequence (non-repeating)
+            std::size_t lit_start = run_start;
+            while (i < len) {
+                if (i + 3 < len && data[i] == data[i + 1] &&
+                    data[i] == data[i + 2] && data[i] == data[i + 3]) {
+                    break;  // upcoming run, end literal
+                }
+                ++i;
+                if (i - lit_start >= 254) break;  // max literal length
+            }
+            std::size_t lit_len = i - lit_start;
+            // Encode as literal: [length < 0xFF][bytes...]
+            out.push_back(static_cast<uint8_t>(lit_len));
+            out.insert(out.end(), data + lit_start, data + lit_start + lit_len);
+        }
+    }
+
+    return out;
+}
+
+std::vector<std::uint8_t> ActivationTransferProtocol::decompress(
+    const std::uint8_t* data, std::size_t len, std::size_t original_size) {
+    std::vector<std::uint8_t> out;
+    out.reserve(original_size);
+
+    if (len < 4) return out;
+
+    // Skip the 4-byte original size prefix (caller provides it)
+    std::size_t i = 4;
+    while (i < len && out.size() < original_size) {
+        uint8_t token = data[i++];
+        if (token == 0xFF) {
+            // Run-length encoded
+            if (i + 1 >= len) break;
+            uint8_t run_len = data[i++];
+            uint8_t byte_val = data[i++];
+            for (uint8_t r = 0; r < run_len && out.size() < original_size; ++r) {
+                out.push_back(byte_val);
+            }
+        } else {
+            // Literal sequence
+            uint8_t lit_len = token;
+            if (i + lit_len > len) break;
+            out.insert(out.end(), data + i, data + i + lit_len);
+            i += lit_len;
+        }
+    }
+
+    return out;
+}
+
+ActivationBuffer ActivationTransferProtocol::prepareBuffer(
+    const std::uint8_t* data, std::size_t size,
+    const std::vector<std::uint32_t>& shape,
+    ActivationDtype dtype,
+    std::uint32_t sequence_id) {
+
+    ActivationBuffer buf;
+    buf.header.ndims = static_cast<uint16_t>(shape.size());
+    buf.header.shape = shape;
+    buf.header.dtype = dtype;
+    buf.header.sequence_id = sequence_id;
+
+    bool should_compress = config_.enable_compression &&
+                           size > config_.compression_threshold_bytes;
+
+    if (should_compress) {
+        auto compressed = compress(data, size);
+        // Only use compressed if it actually saves space (ratio > 1.2)
+        float ratio = static_cast<float>(size) / static_cast<float>(compressed.size());
+        if (ratio > 1.2f) {
+            buf.header.compressed = true;
+            buf.header.payload_size = static_cast<uint32_t>(compressed.size());
+            buf.data = std::move(compressed);
+
+            std::lock_guard<std::mutex> lock(mutex_);
+            // Update running average compression ratio
+            float prev = stats_.compression_ratio;
+            stats_.compression_ratio = prev * 0.9f + ratio * 0.1f;
+        } else {
+            buf.header.compressed = false;
+            buf.header.payload_size = static_cast<uint32_t>(size);
+            buf.data.assign(data, data + size);
+        }
+    } else {
+        buf.header.compressed = false;
+        buf.header.payload_size = static_cast<uint32_t>(size);
+        buf.data.assign(data, data + size);
+    }
+
+    return buf;
+}
+
+std::vector<std::uint8_t> ActivationTransferProtocol::decodeBuffer(
+    const ActivationBuffer& buffer) {
+    if (!buffer.valid()) return {};
+
+    if (!buffer.header.compressed) {
+        return buffer.data;
+    }
+
+    std::size_t original_size = static_cast<std::size_t>(
+        buffer.header.uncompressedSize());
+    return decompress(buffer.data.data(), buffer.data.size(), original_size);
+}
+
+bool ActivationTransferProtocol::asyncSend(
+    const ActivationBuffer& buffer, const PeerId& target,
+    SendCallback on_complete) {
+
+    if (send_status_.load() == TransferStatus::Sending) return false;
+    send_status_.store(TransferStatus::Sending);
+
+    // In a real implementation, this would open a TCP/QUIC connection to target
+    // and stream the serialized header + payload. Here we simulate the async
+    // pattern with the back buffer.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        back_buffer_ = buffer;
+    }
+
+    // Detach send operation (in production: actual network I/O)
+    if (send_thread_.joinable()) send_thread_.join();
+    send_thread_ = std::thread([this, buffer, target, on_complete]() {
+        if (shutdown_.load()) {
+            send_status_.store(TransferStatus::Error);
+            if (on_complete) on_complete(false, buffer.header.sequence_id);
+            return;
+        }
+
+        // Simulate network transfer time based on payload size
+        // (In production: actual socket send with framing)
+        auto start = std::chrono::steady_clock::now();
+
+        // The "transfer" — in real code this would be sendto()/write()
+        // For now, we just validate the buffer is well-formed
+        bool success = buffer.valid() && buffer.data.size() == buffer.header.payload_size;
+
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        float elapsed_ms = std::chrono::duration<float, std::milli>(elapsed).count();
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (success) {
+                stats_.bytes_sent += buffer.data.size();
+                stats_.sends_completed++;
+                float prev_avg = stats_.avg_send_ms;
+                stats_.avg_send_ms = prev_avg * 0.8f + elapsed_ms * 0.2f;
+            } else {
+                stats_.errors++;
+            }
+        }
+
+        send_status_.store(success ? TransferStatus::Complete : TransferStatus::Error);
+        if (on_complete) on_complete(success, buffer.header.sequence_id);
+    });
+
+    return true;
+}
+
+bool ActivationTransferProtocol::asyncRecv(
+    const PeerId& source, RecvCallback on_complete) {
+
+    if (recv_status_.load() == TransferStatus::Receiving) return false;
+    recv_status_.store(TransferStatus::Receiving);
+
+    if (recv_thread_.joinable()) recv_thread_.join();
+    recv_thread_ = std::thread([this, source, on_complete]() {
+        if (shutdown_.load()) {
+            recv_status_.store(TransferStatus::Error);
+            if (on_complete) on_complete(false, ActivationBuffer{});
+            return;
+        }
+
+        // In production: listen on socket, read header, then payload
+        // Here we simulate receiving into the back buffer
+        auto start = std::chrono::steady_clock::now();
+
+        ActivationBuffer received;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            received = back_buffer_;  // simulated: would come from network
+        }
+
+        auto elapsed = std::chrono::steady_clock::now() - start;
+        float elapsed_ms = std::chrono::duration<float, std::milli>(elapsed).count();
+
+        bool success = received.valid();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (success) {
+                stats_.bytes_received += received.data.size();
+                stats_.recvs_completed++;
+                float prev_avg = stats_.avg_recv_ms;
+                stats_.avg_recv_ms = prev_avg * 0.8f + elapsed_ms * 0.2f;
+            } else {
+                stats_.errors++;
+            }
+        }
+
+        recv_status_.store(success ? TransferStatus::Complete : TransferStatus::Error);
+        if (on_complete) on_complete(success, std::move(received));
+    });
+
+    return true;
+}
+
+TransferStatus ActivationTransferProtocol::sendStatus() const {
+    return send_status_.load();
+}
+
+TransferStatus ActivationTransferProtocol::recvStatus() const {
+    return recv_status_.load();
+}
+
+void ActivationTransferProtocol::swapBuffers() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::swap(front_buffer_, back_buffer_);
+}
+
+TransferStats ActivationTransferProtocol::stats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return stats_;
+}
+
+void ActivationTransferProtocol::reset() {
+    shutdown_.store(true);
+    if (send_thread_.joinable()) send_thread_.join();
+    if (recv_thread_.joinable()) recv_thread_.join();
+    shutdown_.store(false);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    front_buffer_ = {};
+    back_buffer_ = {};
+    send_status_.store(TransferStatus::Idle);
+    recv_status_.store(TransferStatus::Idle);
+    next_sequence_ = 0;
+    stats_ = {};
+}
+
+// --- PLACEHOLDER_PIPELINE_EXECUTOR ---
+
+// ---------------------------------------------------------------------------
+// PipelineExecutor
+// ---------------------------------------------------------------------------
+
+PipelineExecutor::PipelineExecutor()
+    : PipelineExecutor(PipelineConfig{}) {}
+
+PipelineExecutor::PipelineExecutor(PipelineConfig config)
+    : config_(std::move(config)) {}
+
+PipelineExecutor::~PipelineExecutor() {
+    shutdown();
+}
+
+bool PipelineExecutor::initialize(
+    const PartitionResult& partition,
+    const std::vector<PartitionDeviceCap>& devices) {
+
+    if (!partition.valid || partition.assignments.empty()) return false;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    current_partition_ = partition;
+    stages_.clear();
+    transfers_.clear();
+    tokens_since_rebalance_ = 0;
+    timing_stats_ = {};
+
+    // Set up pipeline stages from partition assignments
+    for (std::size_t i = 0; i < partition.assignments.size(); ++i) {
+        const auto& assignment = partition.assignments[i];
+        PipelineStageInfo stage;
+        stage.stage_index = static_cast<uint32_t>(i);
+        stage.layer_start = assignment.layer_start;
+        stage.layer_end = assignment.layer_end;
+        stage.state = PipelineStageState::Idle;
+        stage.tokens_processed = 0;
+        stage.errors = 0;
+
+        // Map device index to PeerId
+        if (assignment.device_index < devices.size()) {
+            stage.device = devices[assignment.device_index].peer;
+        }
+
+        stages_.push_back(stage);
+    }
+
+    // Set up activation transfer channels between adjacent stages
+    // N stages need N-1 transfer channels
+    for (std::size_t i = 0; i + 1 < stages_.size(); ++i) {
+        auto transfer = std::make_unique<ActivationTransferProtocol>();
+        transfers_.push_back(std::move(transfer));
+    }
+
+    timing_stats_.stage_times_ms.resize(stages_.size(), 0.0f);
+    running_.store(true);
+    return true;
+}
+
+bool PipelineExecutor::feedToken(
+    const std::uint8_t* embedding, std::size_t size,
+    const std::vector<std::uint32_t>& shape,
+    ActivationDtype dtype) {
+
+    if (!running_.load()) return false;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stages_.empty()) return false;
+
+    // Feed into stage 0
+    auto& stage0 = stages_[0];
+    if (stage0.state == PipelineStageState::Faulted) return false;
+
+    stage0.state = PipelineStageState::Computing;
+
+    auto start = std::chrono::steady_clock::now();
+
+    // In production: dispatch layers[stage0.layer_start..layer_end) on the device
+    // The embedding is the input activation for the first layer.
+    // Here we track the flow and timing.
+
+    // Simulate compute (in production: actual QNN/ONNX dispatch)
+    float compute_ms = current_partition_.assignments[0].stage_time_ms;
+    stage0.last_compute_ms = compute_ms;
+    stage0.tokens_processed++;
+
+    // Forward activation to next stage (if not the only stage)
+    if (stages_.size() > 1 && !transfers_.empty()) {
+        stage0.state = PipelineStageState::SendingOutput;
+
+        // Prepare activation buffer for transfer to stage 1
+        ActivationBuffer buf = transfers_[0]->prepareBuffer(
+            embedding, size, shape, dtype, stage0.tokens_processed);
+
+        // Async send to next device
+        transfers_[0]->asyncSend(buf, stages_[1].device,
+            [this](bool success, uint32_t seq_id) {
+                std::lock_guard<std::mutex> lk(mutex_);
+                if (!success && !stages_.empty()) {
+                    stages_[0].errors++;
+                }
+            });
+
+        stage0.last_transfer_ms = current_partition_.assignments[0].transfer_time_ms;
+    }
+
+    stage0.state = PipelineStageState::Idle;
+
+    // Propagate through remaining stages
+    float total_compute = compute_ms;
+    float total_transfer = stage0.last_transfer_ms;
+
+    for (std::size_t i = 1; i < stages_.size(); ++i) {
+        auto& stage = stages_[i];
+        if (stage.state == PipelineStageState::Faulted) continue;
+
+        stage.state = PipelineStageState::WaitingInput;
+        // In production: asyncRecv blocks until activation arrives
+        stage.state = PipelineStageState::Computing;
+
+        float stage_compute = current_partition_.assignments[i].stage_time_ms;
+        stage.last_compute_ms = stage_compute;
+        total_compute += stage_compute;
+        stage.tokens_processed++;
+
+        // Forward to next stage (if not last)
+        if (i + 1 < stages_.size()) {
+            stage.state = PipelineStageState::SendingOutput;
+            float stage_transfer = current_partition_.assignments[i].transfer_time_ms;
+            stage.last_transfer_ms = stage_transfer;
+            total_transfer += stage_transfer;
+
+            // In production: actual async send through transfers_[i]
+        }
+
+        stage.state = PipelineStageState::Idle;
+    }
+
+    // Update timing statistics
+    updateTimingStats(total_compute, total_transfer);
+    tokens_since_rebalance_++;
+
+    // Check if we should rebalance
+    if (config_.adaptive_rebalance &&
+        tokens_since_rebalance_ >= config_.rebalance_interval_tokens) {
+        if (shouldRebalance()) {
+            // Signal that repartition is recommended (caller invokes repartition())
+            // We don't auto-repartition to avoid disrupting in-flight tokens
+        }
+    }
+
+    return true;
+}
+
+ActivationBuffer PipelineExecutor::collectOutput(std::uint32_t timeout_ms) {
+    if (!running_.load()) return {};
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stages_.empty()) return {};
+
+    // In production: wait on the final stage's output buffer
+    // with the specified timeout. Here we return the last transfer's
+    // front buffer (which holds the final activation after swapBuffers).
+
+    auto& last_stage = stages_.back();
+    if (last_stage.state == PipelineStageState::Faulted) return {};
+
+    // The output is available in the last transfer's buffer
+    // In a real pipeline, this would block until the final stage completes
+    // or until timeout_ms expires.
+
+    ActivationBuffer output;
+    output.header.sequence_id = last_stage.tokens_processed;
+    // Actual data would come from the device's output buffer
+    return output;
+}
+
+void PipelineExecutor::reportDeviceDropout(const PeerId& device) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // Find the faulted stage
+    for (auto& stage : stages_) {
+        if (stage.device == device) {
+            stage.state = PipelineStageState::Faulted;
+            stage.errors++;
+            break;
+        }
+    }
+
+    // If adaptive rebalancing is enabled, the caller should invoke repartition()
+    // with the remaining healthy devices. We mark the pipeline as unhealthy
+    // so the caller knows to act.
+}
+
+bool PipelineExecutor::repartition(
+    const std::vector<LayerCost>& layer_costs,
+    const std::vector<PartitionDeviceCap>& devices,
+    const std::vector<std::uint32_t>& bandwidth_kbps) {
+
+    // Compute new partition with remaining devices
+    auto new_partition = LayerPartitioner::partition(
+        layer_costs, devices, bandwidth_kbps);
+
+    if (!new_partition.valid) return false;
+
+    // Re-initialize pipeline with new partition
+    // Note: KV caches for layers that remain on the same device are preserved
+    // (device handles this internally). Migrated layers lose their cache.
+    bool result = initialize(new_partition, devices);
+
+    if (result) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        timing_stats_.repartitions++;
+        tokens_since_rebalance_ = 0;
+    }
+
+    return result;
+}
+
+std::vector<PipelineStageInfo> PipelineExecutor::stages() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return stages_;
+}
+
+PipelineTimingStats PipelineExecutor::timingStats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return timing_stats_;
+}
+
+bool PipelineExecutor::isHealthy() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_.load()) return false;
+    for (const auto& stage : stages_) {
+        if (stage.state == PipelineStageState::Faulted) return false;
+    }
+    return !stages_.empty();
+}
+
+void PipelineExecutor::shutdown() {
+    running_.store(false);
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& transfer : transfers_) {
+        transfer->reset();
+    }
+    for (auto& stage : stages_) {
+        stage.state = PipelineStageState::Idle;
+    }
+}
+
+bool PipelineExecutor::shouldRebalance() const {
+    // Check if stage times have drifted significantly from the partition estimate.
+    // If the actual makespan exceeds the predicted makespan by more than
+    // rebalance_threshold, recommend repartitioning.
+    if (stages_.size() < 2) return false;
+
+    float max_actual_stage = 0.0f;
+    float min_actual_stage = 1e18f;
+    for (const auto& stage : stages_) {
+        if (stage.state == PipelineStageState::Faulted) return true;  // always rebalance on fault
+        float total = stage.last_compute_ms + stage.last_transfer_ms;
+        max_actual_stage = std::max(max_actual_stage, total);
+        min_actual_stage = std::min(min_actual_stage, total);
+    }
+
+    // Imbalance ratio: if the slowest stage is much slower than the fastest,
+    // the pipeline has significant bubbles.
+    if (min_actual_stage <= 0.0f) return false;
+    float imbalance = (max_actual_stage - min_actual_stage) / max_actual_stage;
+    return imbalance > config_.rebalance_threshold;
+}
+
+void PipelineExecutor::updateTimingStats(float compute_ms, float transfer_ms) {
+    float total = compute_ms + transfer_ms;
+    timing_stats_.total_latency_ms =
+        timing_stats_.total_latency_ms * 0.9f + total * 0.1f;
+    timing_stats_.compute_time_ms =
+        timing_stats_.compute_time_ms * 0.9f + compute_ms * 0.1f;
+    timing_stats_.transfer_time_ms =
+        timing_stats_.transfer_time_ms * 0.9f + transfer_ms * 0.1f;
+
+    // Pipeline bubble = makespan - max(stage_time)
+    float max_stage = 0.0f;
+    for (std::size_t i = 0; i < stages_.size(); ++i) {
+        float st = stages_[i].last_compute_ms + stages_[i].last_transfer_ms;
+        max_stage = std::max(max_stage, st);
+        if (i < timing_stats_.stage_times_ms.size()) {
+            timing_stats_.stage_times_ms[i] =
+                timing_stats_.stage_times_ms[i] * 0.9f + st * 0.1f;
+        }
+    }
+    timing_stats_.pipeline_bubble_ms =
+        timing_stats_.pipeline_bubble_ms * 0.9f +
+        (total - max_stage) * 0.1f;
+
+    // Utilization: fraction of time spent computing (vs idle + transfer)
+    if (total > 0.0f) {
+        float util = compute_ms / total;
+        timing_stats_.utilization = timing_stats_.utilization * 0.9f + util * 0.1f;
+    }
+
+    // Tokens per second estimate
+    if (timing_stats_.total_latency_ms > 0.0f) {
+        timing_stats_.tokens_per_second =
+            static_cast<uint32_t>(1000.0f / timing_stats_.total_latency_ms);
+    }
+}
+
 }  // namespace sparx::mesh

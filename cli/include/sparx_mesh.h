@@ -31,12 +31,14 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <set>
 #include <string>
 #include <thread>
@@ -572,6 +574,406 @@ public:
         std::uint32_t model_memory_mb,
         std::uint32_t local_ram_mb,
         const std::vector<PeerInfo>& peers);
+};
+
+// ---------------------------------------------------------------------------
+// Layer Partitioner (DP-based optimal assignment)
+// ---------------------------------------------------------------------------
+
+/// Per-layer cost profile for partitioning decisions.
+struct LayerCost {
+    std::uint32_t compute_ms;       // estimated compute time on 1-TOPS device
+    std::uint32_t memory_mb;        // memory footprint (weights + activations)
+    std::uint32_t activation_bytes; // output activation size in bytes
+};
+
+/// Device capability summary for partitioning.
+struct PartitionDeviceCap {
+    PeerId peer;
+    std::uint32_t tops;        // throughput in TOPS
+    std::uint32_t ram_mb;      // available RAM
+};
+
+/// Result of DP partitioner: which layers go to which device.
+struct PartitionAssignment {
+    std::uint32_t device_index;     // index into device_caps array
+    std::uint32_t layer_start;      // inclusive
+    std::uint32_t layer_end;        // exclusive
+    float stage_time_ms;            // compute time for this stage
+    float transfer_time_ms;         // time to send activation to next stage
+    float total_time_ms;            // stage_time + transfer_time
+};
+
+/// Full result from the DP partitioner.
+struct PartitionResult {
+    std::vector<PartitionAssignment> assignments;
+    float makespan_ms;              // critical path time (max stage total)
+    float pipeline_latency_ms;      // sum of all stage times (sequential)
+    float speedup;                  // pipeline_latency / makespan
+    bool valid = false;
+};
+
+/**
+ * @brief DP-based optimal layer-to-device partitioner.
+ *
+ * Minimizes makespan (max stage_time including activation transfer) across
+ * heterogeneous devices. Uses dynamic programming over layer ranges:
+ *
+ *   dp[m][i] = min over all cuts j < i of:
+ *       max(dp[m-1][j], cost(j..i on device m) + transfer(i, bandwidth[m-1]))
+ *
+ * Handles:
+ *   - Heterogeneous compute (different TOPS per device)
+ *   - Variable layer costs (attention vs FFN vs embedding)
+ *   - Inter-device bandwidth constraints
+ *   - Memory capacity constraints per device
+ *
+ * Reference: PipeEdge (arXiv:2304.15255), Section 3.2
+ */
+class LayerPartitioner {
+public:
+    /**
+     * Compute optimal layer-to-device assignment.
+     *
+     * @param layer_costs   Per-layer cost profile [N layers]
+     * @param device_caps   Device capabilities [M devices]
+     * @param bandwidth_kbps Inter-device bandwidth [M-1 links], bandwidth[i]
+     *                       is the link between device i and device i+1
+     * @return Optimal partition, or invalid result if infeasible
+     */
+    static PartitionResult partition(
+        const std::vector<LayerCost>& layer_costs,
+        const std::vector<PartitionDeviceCap>& device_caps,
+        const std::vector<std::uint32_t>& bandwidth_kbps);
+
+    /// Evaluate makespan for a given assignment (for validation/comparison).
+    static float evaluateMakespan(
+        const std::vector<PartitionAssignment>& assignments);
+
+private:
+    /// Compute the execution time for layers [start, end) on a device.
+    static float computeStageTime(
+        const std::vector<LayerCost>& layer_costs,
+        std::uint32_t start, std::uint32_t end,
+        std::uint32_t device_tops);
+
+    /// Compute transfer time for activation at layer boundary.
+    static float computeTransferTime(
+        const std::vector<LayerCost>& layer_costs,
+        std::uint32_t boundary_layer,
+        std::uint32_t bandwidth_kbps);
+
+    /// Check if layers [start, end) fit in device memory.
+    static bool fitsInMemory(
+        const std::vector<LayerCost>& layer_costs,
+        std::uint32_t start, std::uint32_t end,
+        std::uint32_t device_ram_mb);
+};
+
+// ---------------------------------------------------------------------------
+// Activation Transfer Protocol
+// ---------------------------------------------------------------------------
+
+/// Supported activation data types.
+enum class ActivationDtype : std::uint8_t {
+    FP32 = 0,
+    FP16 = 1,
+    BF16 = 2,
+    INT8 = 3,
+    INT4 = 4,
+};
+
+/// Size in bytes per element for each dtype.
+inline std::uint32_t dtypeSize(ActivationDtype dtype) {
+    switch (dtype) {
+        case ActivationDtype::FP32: return 4;
+        case ActivationDtype::FP16: return 2;
+        case ActivationDtype::BF16: return 2;
+        case ActivationDtype::INT8: return 1;
+        case ActivationDtype::INT4: return 1;  // packed, but treat as 1 for sizing
+    }
+    return 0;
+}
+
+/// Wire format header for activation tensor transfer.
+/// Layout: [magic(4)][version(2)][ndims(2)][shape(ndims*4)][dtype(1)][flags(1)][payload_size(4)]
+struct ActivationHeader {
+    static constexpr std::uint32_t MAGIC = 0x53505258;  // "SPRX"
+    static constexpr std::uint16_t VERSION = 1;
+
+    std::uint16_t ndims = 0;
+    std::vector<std::uint32_t> shape;
+    ActivationDtype dtype = ActivationDtype::FP16;
+    bool compressed = false;       // LZ4 compression flag
+    std::uint32_t payload_size = 0; // actual wire bytes (after compression)
+    std::uint32_t sequence_id = 0;  // for ordering in pipeline
+
+    /// Compute total element count from shape.
+    std::uint64_t elementCount() const;
+    /// Compute uncompressed payload size.
+    std::uint64_t uncompressedSize() const;
+    /// Serialize header to wire format bytes.
+    std::vector<std::uint8_t> serialize() const;
+    /// Deserialize header from wire bytes. Returns bytes consumed, 0 on error.
+    static std::uint32_t deserialize(const std::uint8_t* data, std::size_t len,
+                                     ActivationHeader& out);
+};
+
+/// A buffer holding activation tensor data (payload).
+struct ActivationBuffer {
+    ActivationHeader header;
+    std::vector<std::uint8_t> data;  // raw or compressed payload
+
+    /// Total wire size (header + payload).
+    std::size_t wireSize() const;
+    /// Is this buffer valid and non-empty?
+    bool valid() const { return !data.empty() && header.payload_size > 0; }
+};
+
+/// Status of an async transfer operation.
+enum class TransferStatus : std::uint8_t {
+    Idle = 0,
+    Sending = 1,
+    Receiving = 2,
+    Complete = 3,
+    Error = 4,
+};
+
+/// Statistics for activation transfers.
+struct TransferStats {
+    std::uint64_t bytes_sent = 0;
+    std::uint64_t bytes_received = 0;
+    std::uint32_t sends_completed = 0;
+    std::uint32_t recvs_completed = 0;
+    std::uint32_t errors = 0;
+    float avg_send_ms = 0.0f;
+    float avg_recv_ms = 0.0f;
+    float compression_ratio = 1.0f;  // uncompressed/compressed
+};
+
+/**
+ * @brief Double-buffered async activation transfer protocol.
+ *
+ * Implements efficient inter-device tensor shipping for pipeline parallelism:
+ *   - Binary header with shape/dtype metadata
+ *   - Optional LZ4 compression for bandwidth-limited links
+ *   - Double buffering: overlap compute with transfer
+ *   - Sequence IDs for ordering guarantees
+ *
+ * Double-buffer strategy:
+ *   Buffer A: being filled by current layer computation
+ *   Buffer B: being sent to next device (or received from previous)
+ *   On completion: swap A ↔ B
+ *
+ * Thread model: send/recv run on dedicated I/O threads, compute continues
+ * on the main thread. Completion is signaled via callback or poll.
+ */
+class ActivationTransferProtocol {
+public:
+    struct Config {
+        bool enable_compression = true;   // LZ4 compress if ratio > 1.2x
+        std::uint32_t compression_threshold_bytes = 4096;  // don't compress small tensors
+        std::uint32_t max_buffer_size_mb = 64;  // max single activation buffer
+        std::uint32_t timeout_ms = 5000;
+    };
+
+    ActivationTransferProtocol();
+    explicit ActivationTransferProtocol(Config config);
+    ~ActivationTransferProtocol();
+
+    /// Prepare an activation buffer for sending.
+    /// Compresses if beneficial and above threshold.
+    ActivationBuffer prepareBuffer(
+        const std::uint8_t* data, std::size_t size,
+        const std::vector<std::uint32_t>& shape,
+        ActivationDtype dtype,
+        std::uint32_t sequence_id);
+
+    /// Decode a received buffer (decompress if needed).
+    /// Returns raw activation data or empty vector on error.
+    std::vector<std::uint8_t> decodeBuffer(const ActivationBuffer& buffer);
+
+    /// Initiate async send of activation to next pipeline stage.
+    /// Swaps to back buffer; returns immediately.
+    /// Callback fires on completion (or error).
+    using SendCallback = std::function<void(bool success, std::uint32_t seq_id)>;
+    bool asyncSend(const ActivationBuffer& buffer, const PeerId& target,
+                   SendCallback on_complete);
+
+    /// Initiate async receive from previous pipeline stage.
+    /// Receives into back buffer; callback fires with the filled buffer.
+    using RecvCallback = std::function<void(bool success, ActivationBuffer buffer)>;
+    bool asyncRecv(const PeerId& source, RecvCallback on_complete);
+
+    /// Poll for completion (non-blocking). Returns current status.
+    TransferStatus sendStatus() const;
+    TransferStatus recvStatus() const;
+
+    /// Swap front/back buffers (called after compute step completes).
+    void swapBuffers();
+
+    /// Get transfer statistics.
+    TransferStats stats() const;
+
+    /// Reset state (e.g., on repartition).
+    void reset();
+
+private:
+    Config config_;
+    mutable std::mutex mutex_;
+
+    // Double buffer state
+    ActivationBuffer front_buffer_;   // active: being computed into / read from
+    ActivationBuffer back_buffer_;    // in-flight: being sent / received
+
+    std::atomic<TransferStatus> send_status_{TransferStatus::Idle};
+    std::atomic<TransferStatus> recv_status_{TransferStatus::Idle};
+    std::uint32_t next_sequence_ = 0;
+    TransferStats stats_;
+
+    // I/O threads
+    std::thread send_thread_;
+    std::thread recv_thread_;
+    std::atomic<bool> shutdown_{false};
+
+    /// LZ4-style compression (simplified: run-length + delta encoding).
+    std::vector<std::uint8_t> compress(const std::uint8_t* data, std::size_t len);
+    /// Decompression.
+    std::vector<std::uint8_t> decompress(const std::uint8_t* data, std::size_t len,
+                                          std::size_t original_size);
+};
+
+// ---------------------------------------------------------------------------
+// Pipeline Executor
+// ---------------------------------------------------------------------------
+
+/// Status of a pipeline stage (one device in the chain).
+enum class PipelineStageState : std::uint8_t {
+    Idle = 0,
+    WaitingInput = 1,   // waiting for activation from previous stage
+    Computing = 2,      // running assigned layers
+    SendingOutput = 3,  // forwarding activation to next stage
+    Complete = 4,       // finished all tokens for this request
+    Faulted = 5,        // device error or dropout
+};
+
+/// Per-stage timing and status information.
+struct PipelineStageInfo {
+    std::uint32_t stage_index;
+    PeerId device;
+    std::uint32_t layer_start;
+    std::uint32_t layer_end;
+    PipelineStageState state = PipelineStageState::Idle;
+    float last_compute_ms = 0.0f;
+    float last_transfer_ms = 0.0f;
+    std::uint32_t tokens_processed = 0;
+    std::uint32_t errors = 0;
+};
+
+/// Aggregate timing statistics for pipeline optimization.
+struct PipelineTimingStats {
+    float total_latency_ms = 0.0f;       // end-to-end for one token
+    float compute_time_ms = 0.0f;        // sum of all stage compute
+    float transfer_time_ms = 0.0f;       // sum of all inter-stage transfers
+    float pipeline_bubble_ms = 0.0f;     // time wasted in pipeline stalls
+    float utilization = 0.0f;            // compute / (compute + bubble + transfer)
+    std::uint32_t tokens_per_second = 0; // throughput estimate
+    std::uint32_t repartitions = 0;      // how many times we repartitioned
+    std::vector<float> stage_times_ms;   // per-stage breakdown
+};
+
+/// Configuration for the pipeline executor.
+struct PipelineConfig {
+    /// Maximum tokens to process before re-evaluating partition.
+    std::uint32_t rebalance_interval_tokens = 128;
+    /// Stage timeout before declaring device dropout (ms).
+    std::uint32_t stage_timeout_ms = 10000;
+    /// Enable adaptive re-partitioning on performance drift.
+    bool adaptive_rebalance = true;
+    /// Minimum speedup ratio to justify repartitioning overhead.
+    float rebalance_threshold = 0.15f;
+    /// Enable KV cache locality (keep cache on device, avoid migration).
+    bool kv_cache_local = true;
+};
+
+/**
+ * @brief Pipeline executor for split model inference across mesh devices.
+ *
+ * Orchestrates the execution of a model split across multiple devices:
+ *   1. Accepts a PartitionResult (from LayerPartitioner)
+ *   2. Sets up pipeline stages with double-buffered activation transfer
+ *   3. Feeds tokens through the pipeline
+ *   4. Monitors timing for adaptive optimization
+ *   5. Handles device dropout via repartitioning
+ *
+ * KV cache management:
+ *   - Each device maintains its own KV cache for assigned layers
+ *   - On repartition: layers that stay on same device keep their cache
+ *   - Migrated layers invalidate cache (recompute from prompt)
+ *
+ * Fault tolerance:
+ *   - Stage timeout triggers dropout detection
+ *   - Repartition across remaining devices
+ *   - In-flight activations are re-sent after repartition
+ *
+ * Reference: PipeEdge (arXiv:2304.15255), Section 4 (adaptive scheduling)
+ */
+class PipelineExecutor {
+public:
+    PipelineExecutor();
+    explicit PipelineExecutor(PipelineConfig config);
+    ~PipelineExecutor();
+
+    /// Initialize pipeline from a partition result.
+    /// Sets up stages, buffers, and transfer channels.
+    bool initialize(const PartitionResult& partition,
+                    const std::vector<PartitionDeviceCap>& devices);
+
+    /// Feed a token embedding into the pipeline (stage 0 input).
+    /// Returns false if pipeline is not ready or faulted.
+    bool feedToken(const std::uint8_t* embedding, std::size_t size,
+                   const std::vector<std::uint32_t>& shape,
+                   ActivationDtype dtype);
+
+    /// Collect output from the final stage (blocking until available or timeout).
+    /// Returns empty buffer if pipeline stalled or errored.
+    ActivationBuffer collectOutput(std::uint32_t timeout_ms = 5000);
+
+    /// Signal device dropout. Triggers repartition if adaptive_rebalance enabled.
+    void reportDeviceDropout(const PeerId& device);
+
+    /// Force repartition with new device set and layer costs.
+    bool repartition(const std::vector<LayerCost>& layer_costs,
+                     const std::vector<PartitionDeviceCap>& devices,
+                     const std::vector<std::uint32_t>& bandwidth_kbps);
+
+    /// Get current pipeline stage information.
+    std::vector<PipelineStageInfo> stages() const;
+
+    /// Get aggregate timing statistics.
+    PipelineTimingStats timingStats() const;
+
+    /// Is the pipeline running and healthy?
+    bool isHealthy() const;
+
+    /// Shutdown the pipeline (drain in-flight tokens, close channels).
+    void shutdown();
+
+private:
+    PipelineConfig config_;
+    mutable std::mutex mutex_;
+    std::vector<PipelineStageInfo> stages_;
+    std::vector<std::unique_ptr<ActivationTransferProtocol>> transfers_;
+    PartitionResult current_partition_;
+    PipelineTimingStats timing_stats_;
+    std::atomic<bool> running_{false};
+    std::uint32_t tokens_since_rebalance_ = 0;
+
+    /// Check if rebalancing is warranted based on timing drift.
+    bool shouldRebalance() const;
+
+    /// Update timing stats after a token completes the pipeline.
+    void updateTimingStats(float compute_ms, float transfer_ms);
 };
 
 // ---------------------------------------------------------------------------

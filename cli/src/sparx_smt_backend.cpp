@@ -2,20 +2,32 @@
  * @file sparx_smt_backend.cpp
  * @brief SMT solver interface and BMC encoder for formal verification.
  *
- * Provides a built-in BitBlast solver (no external dependencies) and
- * Z3 via dlopen when available. The BitBlast solver handles the subset
- * of QF_BOOL sufficient for DAG verification (boolean satisfiability
- * with simple propositional encoding of Kripke states).
+ * Provides a built-in CDCL SAT solver (no external dependencies) and
+ * Z3 via dlopen when available. The built-in solver implements:
+ *   - Two-watched-literal scheme for O(1) BCP
+ *   - Unit propagation
+ *   - Conflict analysis with 1-UIP learned clauses
+ *   - Non-chronological backtracking (backjump)
+ *   - VSIDS variable activity scoring
+ *   - Phase saving for decision polarity
+ *   - Clause database cleanup (periodic removal of low-activity learned clauses)
+ *
+ * Reference: MiniSat (Een & Sörensson, 2003)
  */
 
 #include "sparx_smt_backend.h"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <iostream>
+#include <limits>
+#include <numeric>
 #include <queue>
 #include <unordered_map>
+#include <vector>
 
 #ifndef _WIN32
 #include <dlfcn.h>
@@ -24,13 +36,445 @@
 namespace sparx::formal::smt {
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// BitBlast Solver (built-in, no dependencies)
+// CDCL SAT Solver (built-in, no dependencies)
+// Reference: MiniSat (Een & Sörensson, 2003)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 namespace {
 
-/// Simple DPLL-based SAT solver for boolean formulas.
-/// Sufficient for Kripke models with ≤50 nodes (typical plan sizes).
+// --- Internal CDCL SAT engine operating on CNF ---
+
+/// A literal: variable index + sign. Var 0 is unused sentinel.
+/// Positive literal for var v: Lit(v, false). Negative: Lit(v, true).
+struct Lit {
+    uint32_t x;  // encoded as (var << 1) | sign
+
+    Lit() : x(0) {}
+    explicit Lit(uint32_t var, bool sign) : x((var << 1) | (sign ? 1u : 0u)) {}
+
+    uint32_t var() const { return x >> 1; }
+    bool sign() const { return x & 1; }
+    Lit operator~() const { Lit p; p.x = x ^ 1; return p; }
+    bool operator==(Lit o) const { return x == o.x; }
+    bool operator!=(Lit o) const { return x != o.x; }
+    bool operator<(Lit o) const { return x < o.x; }
+};
+
+static const Lit LIT_UNDEF{0, false};
+
+/// Ternary value for variable assignment.
+enum class LBool : uint8_t { True, False, Undef };
+
+/// Internal clause representation.
+struct Clause {
+    std::vector<Lit> lits;
+    bool learnt = false;
+    float activity = 0.0f;
+
+};
+
+/// CDCL SAT solver core (operates purely on CNF clauses).
+class CdclEngine {
+public:
+    CdclEngine() = default;
+
+    /// Reserve space for n variables (1-indexed, 0 unused).
+    void initVars(uint32_t n) {
+        num_vars_ = n;
+        assigns_.assign(n + 1, LBool::Undef);
+        level_.assign(n + 1, -1);
+        reason_.assign(n + 1, -1);
+        activity_.assign(n + 1, 0.0);
+        polarity_.assign(n + 1, false);  // phase saving
+        seen_.assign(n + 1, false);
+        watches_.resize(2 * (n + 1));
+        // Build initial VSIDS order
+        order_.clear();
+        for (uint32_t v = 1; v <= n; ++v) order_.push_back(v);
+    }
+
+    /// Add a clause. Returns false if conflict at decision level 0 (unsat).
+    bool addClause(std::vector<Lit> lits) {
+        // Remove duplicates and check for tautology
+        std::sort(lits.begin(), lits.end());
+        lits.erase(std::unique(lits.begin(), lits.end()), lits.end());
+        for (size_t i = 0; i + 1 < lits.size(); ++i) {
+            if (lits[i].var() == lits[i + 1].var()) return true;  // tautology
+        }
+
+        if (lits.empty()) return false;  // empty clause → unsat
+
+        if (lits.size() == 1) {
+            // Unit clause — enqueue immediately
+            if (valueLit(lits[0]) == LBool::False) return false;
+            if (valueLit(lits[0]) == LBool::Undef) {
+                uncheckedEnqueue(lits[0], -1);
+            }
+            return true;
+        }
+
+        // Multi-literal clause: allocate and set up watches
+        int ci = static_cast<int>(clauses_.size());
+        clauses_.push_back(Clause{std::move(lits), false, 0.0f});
+        attachClause(ci);
+        return true;
+    }
+
+    /// Run the CDCL solver. Returns Sat/Unsat/Unknown.
+    CheckResult solve(std::chrono::steady_clock::time_point deadline) {
+        decisions_ = 0;
+        conflicts_ = 0;
+        conflict_limit_for_cleanup_ = 100;
+
+        // Initial BCP at level 0
+        int confl = propagate();
+        if (confl >= 0) return CheckResult::Unsat;
+
+        while (true) {
+            // Timeout check
+            if (std::chrono::steady_clock::now() > deadline)
+                return CheckResult::Unknown;
+
+            // Decide: pick unassigned variable with highest VSIDS score
+            Lit decision = pickBranchLit();
+            if (decision == LIT_UNDEF) return CheckResult::Sat;  // all assigned
+
+            decisions_++;
+            current_level_++;
+            trail_lim_.push_back(static_cast<int>(trail_.size()));
+            uncheckedEnqueue(decision, -1);
+
+            // BCP loop
+            while (true) {
+                confl = propagate();
+                if (confl < 0) break;  // no conflict
+
+                conflicts_++;
+
+                if (current_level_ == 0) return CheckResult::Unsat;
+
+                // Conflict analysis → 1-UIP learned clause + backjump level
+                std::vector<Lit> learnt_clause;
+                int backjump_level = 0;
+                analyze(confl, learnt_clause, backjump_level);
+
+                // Non-chronological backtracking
+                cancelUntil(backjump_level);
+
+                // Add learned clause
+                if (learnt_clause.size() == 1) {
+                    uncheckedEnqueue(learnt_clause[0], -1);
+                } else {
+                    int ci = static_cast<int>(clauses_.size());
+                    clauses_.push_back(Clause{learnt_clause, true, 0.0f});
+                    attachClause(ci);
+                    // Bump activity of learned clause
+                    clauses_[ci].activity = clause_inc_;
+                    // The asserting literal is learnt_clause[0]; reason is ci
+                    uncheckedEnqueue(learnt_clause[0], ci);
+                }
+
+                // Decay variable activities (VSIDS)
+                varDecayActivity();
+                clauseDecayActivity();
+
+                // Periodic clause database cleanup
+                if (conflicts_ >= conflict_limit_for_cleanup_) {
+                    reduceDB();
+                    conflict_limit_for_cleanup_ += conflict_limit_for_cleanup_ / 2;
+                }
+            }
+        }
+    }
+
+    /// Get assignment of variable v after SAT.
+    LBool value(uint32_t v) const { return assigns_[v]; }
+
+    uint64_t decisionsCount() const { return decisions_; }
+    uint64_t conflictsCount() const { return conflicts_; }
+
+private:
+    uint32_t num_vars_ = 0;
+    int current_level_ = 0;
+
+    // --- Assignment state ---
+    std::vector<LBool> assigns_;     // var → {True, False, Undef}
+    std::vector<int> level_;         // var → decision level
+    std::vector<int> reason_;        // var → clause index (-1 = decision)
+    std::vector<Lit> trail_;         // assignment trail (chronological)
+    std::vector<int> trail_lim_;     // trail_[trail_lim_[i]] = first lit at level i
+    int qhead_ = 0;                  // propagation queue head in trail_
+
+    // --- Two-watched-literal scheme ---
+    // watches_[lit.x] = list of clause indices watched by this literal
+    std::vector<std::vector<int>> watches_;
+
+    // --- Clause database ---
+    std::vector<Clause> clauses_;
+
+    // --- VSIDS activity ---
+    std::vector<double> activity_;
+    double var_inc_ = 1.0;
+    static constexpr double VAR_DECAY = 0.95;
+    float clause_inc_ = 1.0f;
+    static constexpr float CLAUSE_DECAY = 0.999f;
+
+    // --- Phase saving ---
+    std::vector<bool> polarity_;
+
+    // --- Decision ordering (simplified: sorted by activity) ---
+    std::vector<uint32_t> order_;
+
+    // --- Conflict analysis scratch ---
+    std::vector<bool> seen_;
+
+    // --- Statistics ---
+    uint64_t decisions_ = 0;
+    uint64_t conflicts_ = 0;
+    uint64_t conflict_limit_for_cleanup_ = 100;
+
+    // --- Helpers ---
+
+    LBool valueLit(Lit p) const {
+        LBool v = assigns_[p.var()];
+        if (v == LBool::Undef) return LBool::Undef;
+        // If sign is true (negative lit), flip
+        if (p.sign()) return (v == LBool::True) ? LBool::False : LBool::True;
+        return v;
+    }
+
+    void uncheckedEnqueue(Lit p, int from) {
+        assigns_[p.var()] = p.sign() ? LBool::False : LBool::True;
+        level_[p.var()] = current_level_;
+        reason_[p.var()] = from;
+        trail_.push_back(p);
+    }
+
+    void attachClause(int ci) {
+        const auto& c = clauses_[ci];
+        // Watch the first two literals
+        watches_[c.lits[0].x].push_back(ci);
+        watches_[(~c.lits[1]).x].push_back(ci);
+        // Correction: watched literal scheme watches on the negation
+        // Actually: watch list for ~lit contains clauses where lit is watched.
+        // Standard MiniSat: watches_[~p] stores clauses containing p as watched.
+        // Let me use the standard encoding:
+        // watches_[p.x] = clauses where ~p might trigger propagation
+        // We watch lits[0] and lits[1]; store clause in watches_[~lits[0]]
+        // and watches_[~lits[1]].
+        // Redo:
+        watches_[c.lits[0].x].pop_back();
+        watches_[(~c.lits[1]).x].pop_back();
+        watches_[(~c.lits[0]).x].push_back(ci);
+        watches_[(~c.lits[1]).x].push_back(ci);
+    }
+
+    /// Boolean Constraint Propagation. Returns conflicting clause index or -1.
+    int propagate() {
+        while (qhead_ < static_cast<int>(trail_.size())) {
+            Lit p = trail_[qhead_++];
+            // p was assigned true → ~p is false → look at watches_[p.x]
+            // because those clauses had ~p as a watched literal (stored as p.x)
+            std::vector<int>& ws = watches_[p.x];
+            int i = 0, j = 0;
+            while (i < static_cast<int>(ws.size())) {
+                int ci = ws[i];
+                Clause& c = clauses_[ci];
+
+                // Make sure c.lits[1] is the falsified watched literal (~p)
+                if (c.lits[0] == ~p) {
+                    std::swap(c.lits[0], c.lits[1]);
+                }
+
+                // If first watched literal is already true, clause is sat
+                if (valueLit(c.lits[0]) == LBool::True) {
+                    ws[j++] = ws[i++];
+                    continue;
+                }
+
+                // Look for a new literal to watch
+                bool found = false;
+                for (size_t k = 2; k < c.lits.size(); ++k) {
+                    if (valueLit(c.lits[k]) != LBool::False) {
+                        std::swap(c.lits[1], c.lits[k]);
+                        watches_[(~c.lits[1]).x].push_back(ci);
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) { i++; continue; }
+
+                // No replacement found: clause is unit or conflicting
+                ws[j++] = ws[i++];
+                if (valueLit(c.lits[0]) == LBool::False) {
+                    // Conflict! Copy remaining watches and return.
+                    while (i < static_cast<int>(ws.size())) ws[j++] = ws[i++];
+                    ws.resize(j);
+                    return ci;
+                } else {
+                    // Unit propagation
+                    uncheckedEnqueue(c.lits[0], ci);
+                }
+            }
+            ws.resize(j);
+        }
+        return -1;  // no conflict
+    }
+
+    /// 1-UIP conflict analysis. Produces a learned clause and backjump level.
+    void analyze(int confl, std::vector<Lit>& out_learnt, int& out_btlevel) {
+        int pathC = 0;
+        Lit p = LIT_UNDEF;
+        out_learnt.clear();
+        out_learnt.push_back(LIT_UNDEF);  // placeholder for asserting lit
+        int index = static_cast<int>(trail_.size()) - 1;
+
+        do {
+            Clause& c = clauses_[confl];
+            // Bump clause activity for conflict participation
+            if (c.learnt) c.activity += clause_inc_;
+
+            for (size_t j = (p == LIT_UNDEF) ? 0 : 1; j < c.lits.size(); ++j) {
+                uint32_t v = c.lits[j].var();
+                if (!seen_[v] && level_[v] > 0) {
+                    seen_[v] = true;
+                    bumpActivity(v);
+                    if (level_[v] >= current_level_) {
+                        pathC++;
+                    } else {
+                        out_learnt.push_back(c.lits[j]);
+                    }
+                }
+            }
+
+            // Select next literal on trail at current level
+            while (!seen_[trail_[index].var()]) index--;
+            p = trail_[index--];
+            confl = reason_[p.var()];
+            seen_[p.var()] = false;
+            pathC--;
+        } while (pathC > 0);
+
+        out_learnt[0] = ~p;  // asserting literal (1-UIP)
+
+        // Compute backjump level (highest level among non-asserting lits)
+        if (out_learnt.size() == 1) {
+            out_btlevel = 0;
+        } else {
+            // Find literal with maximum level, put at position 1
+            int max_i = 1;
+            for (size_t i = 2; i < out_learnt.size(); ++i) {
+                if (level_[out_learnt[i].var()] > level_[out_learnt[max_i].var()])
+                    max_i = static_cast<int>(i);
+            }
+            std::swap(out_learnt[1], out_learnt[max_i]);
+            out_btlevel = level_[out_learnt[1].var()];
+        }
+
+        // Clear seen flags
+        for (size_t i = 0; i < out_learnt.size(); ++i)
+            seen_[out_learnt[i].var()] = false;
+    }
+
+    /// Cancel assignments back to given level (non-chronological backjump).
+    void cancelUntil(int level) {
+        if (current_level_ <= level) return;
+        for (int i = static_cast<int>(trail_.size()) - 1;
+             i >= trail_lim_[level]; --i) {
+            uint32_t v = trail_[i].var();
+            // Phase saving: remember last polarity
+            polarity_[v] = (assigns_[v] == LBool::True);
+            assigns_[v] = LBool::Undef;
+            level_[v] = -1;
+            reason_[v] = -1;
+        }
+        trail_.resize(trail_lim_[level]);
+        trail_lim_.resize(level);
+        qhead_ = static_cast<int>(trail_.size());
+        current_level_ = level;
+    }
+
+    /// VSIDS: pick branching variable with highest activity.
+    Lit pickBranchLit() {
+        // Sort order by activity (descending) — use partial sort for efficiency
+        uint32_t best = 0;
+        double best_act = -1.0;
+        for (uint32_t v : order_) {
+            if (assigns_[v] == LBool::Undef && activity_[v] > best_act) {
+                best = v;
+                best_act = activity_[v];
+            }
+        }
+        if (best == 0) return LIT_UNDEF;
+        // Use phase saving for polarity
+        bool sign = !polarity_[best];  // negate: polarity_[v]=true means last was true, try true again
+        return Lit(best, sign);
+    }
+
+    void bumpActivity(uint32_t v) {
+        activity_[v] += var_inc_;
+        // Rescale if overflow
+        if (activity_[v] > 1e100) {
+            for (uint32_t i = 1; i <= num_vars_; ++i) activity_[i] *= 1e-100;
+            var_inc_ *= 1e-100;
+        }
+    }
+
+    void varDecayActivity() {
+        var_inc_ /= VAR_DECAY;
+    }
+
+    void clauseDecayActivity() {
+        clause_inc_ /= CLAUSE_DECAY;
+    }
+
+    /// Reduce learned clause database: remove half of the low-activity clauses.
+    void reduceDB() {
+        // Collect indices of learned clauses
+        std::vector<int> learned_indices;
+        for (int i = 0; i < static_cast<int>(clauses_.size()); ++i) {
+            if (clauses_[i].learnt) learned_indices.push_back(i);
+        }
+
+        // Sort by activity (ascending)
+        std::sort(learned_indices.begin(), learned_indices.end(),
+            [this](int a, int b) {
+                return clauses_[a].activity < clauses_[b].activity;
+            });
+
+        // Remove bottom half (mark as empty — lazy deletion)
+        size_t half = learned_indices.size() / 2;
+        for (size_t i = 0; i < half; ++i) {
+            int ci = learned_indices[i];
+            // Only remove if not a reason for current assignment
+            bool is_reason = false;
+            for (const Lit& l : clauses_[ci].lits) {
+                if (reason_[l.var()] == ci) { is_reason = true; break; }
+            }
+            if (!is_reason) {
+                detachClause(ci);
+                clauses_[ci].lits.clear();
+            }
+        }
+    }
+
+    void detachClause(int ci) {
+        const auto& c = clauses_[ci];
+        if (c.lits.size() < 2) return;
+        removeWatch((~c.lits[0]).x, ci);
+        removeWatch((~c.lits[1]).x, ci);
+    }
+
+    void removeWatch(uint32_t lit_idx, int ci) {
+        auto& ws = watches_[lit_idx];
+        ws.erase(std::remove(ws.begin(), ws.end(), ci), ws.end());
+    }
+};
+
+// ─── Tseitin CNF translation layer + SmtSolver wrapper ─────────────────────
+
+/// BitBlastSolver: translates expression DAG to CNF via Tseitin encoding,
+/// then solves with the CDCL engine.
 class BitBlastSolver : public SmtSolver {
 public:
     BitBlastSolver() = default;
@@ -43,7 +487,6 @@ public:
     }
 
     Expr mkIntVar(const std::string& name) override {
-        // Encode int as bitvector (32-bit)
         uint64_t id = next_id_++;
         var_names_[id] = name;
         return Expr{id, Sort::Int};
@@ -64,7 +507,7 @@ public:
         return Expr{id, Sort::Int};
     }
 
-    // Boolean ops — encode as clauses
+    // Boolean ops — stored as expression DAG nodes
     Expr mkNot(Expr a) override {
         uint64_t id = next_id_++;
         neg_map_[id] = a.handle;
@@ -122,7 +565,7 @@ public:
 
     // Quantifiers (for QF_BOOL, these are expanded)
     Expr mkForall(const std::vector<Expr>& /*vars*/, Expr body) override {
-        return body;  // QF encoding: no real quantifiers
+        return body;
     }
     Expr mkExists(const std::vector<Expr>& /*vars*/, Expr body) override {
         return body;
@@ -144,20 +587,58 @@ public:
         }
     }
 
-    // DPLL-based solving
+    // CDCL-based solving via Tseitin encoding
     CheckResult check(uint32_t timeout_ms) override {
         decisions_ = 0;
         conflicts_ = 0;
+        assignment_.clear();
+
         auto deadline = std::chrono::steady_clock::now() +
                         std::chrono::milliseconds(timeout_ms);
 
-        // Evaluate all assertions under current assignment
-        assignment_.clear();
-        assignment_[TRUE_ID] = true;
-        assignment_[FALSE_ID] = false;
+        // Phase 1: Tseitin-encode all assertions into CNF
+        cnf_clauses_.clear();
+        expr_to_satvar_.clear();
+        next_sat_var_ = 1;
 
-        // Unit propagation + DPLL
-        auto result = dpll(assertions_, deadline);
+        // Reserve SAT variable 1 for TRUE
+        uint32_t true_var = allocSatVar(TRUE_ID);
+        cnf_clauses_.push_back({Lit(true_var, false)});  // TRUE must be true
+
+        // Encode each assertion and require it to be true
+        for (auto h : assertions_) {
+            uint32_t v = tseitinEncode(h);
+            cnf_clauses_.push_back({Lit(v, false)});  // assert top-level = true
+        }
+
+        // Phase 2: Initialize CDCL engine and add clauses
+        CdclEngine engine;
+        engine.initVars(next_sat_var_ - 1);
+
+        for (auto& clause : cnf_clauses_) {
+            if (!engine.addClause(std::move(clause))) {
+                return CheckResult::Unsat;
+            }
+        }
+
+        // Phase 3: Solve
+        auto result = engine.solve(deadline);
+        decisions_ = engine.decisionsCount();
+        conflicts_ = engine.conflictsCount();
+
+        // Phase 4: Extract model for SAT result
+        if (result == CheckResult::Sat) {
+            for (const auto& [expr_id, sat_var] : expr_to_satvar_) {
+                LBool val = engine.value(sat_var);
+                if (val != LBool::Undef) {
+                    assignment_[expr_id] = (val == LBool::True);
+                }
+            }
+            // Ensure constants
+            assignment_[TRUE_ID] = true;
+            assignment_[FALSE_ID] = false;
+        }
+
         return result;
     }
 
@@ -169,7 +650,7 @@ public:
     }
 
     std::optional<int64_t> modelInt(Expr /*var*/) override {
-        return std::nullopt;  // BitBlast doesn't support int models directly
+        return std::nullopt;
     }
 
     std::vector<ModelValue> fullModel() override {
@@ -198,6 +679,7 @@ private:
     static constexpr uint64_t FALSE_ID = 2;
     uint64_t next_id_ = 3;
 
+    // Expression DAG
     std::unordered_map<uint64_t, std::string> var_names_;
     std::unordered_map<uint64_t, int64_t> int_consts_;
     std::unordered_map<uint64_t, uint64_t> neg_map_;
@@ -208,128 +690,124 @@ private:
     std::unordered_map<uint64_t, std::pair<uint64_t, uint64_t>> add_map_;
     std::unordered_map<uint64_t, std::pair<uint64_t, uint64_t>> sub_map_;
 
+    // Solver state
     std::vector<uint64_t> assertions_;
     std::vector<size_t> stack_;
     std::unordered_map<uint64_t, bool> assignment_;
     uint64_t decisions_ = 0;
     uint64_t conflicts_ = 0;
 
-    /// Evaluate an expression under current assignment.
-    /// Returns nullopt if undetermined (free variable).
-    std::optional<bool> evaluate(uint64_t id) {
-        if (id == TRUE_ID) return true;
-        if (id == FALSE_ID) return false;
+    // Tseitin encoding state (rebuilt each check() call)
+    std::unordered_map<uint64_t, uint32_t> expr_to_satvar_;
+    uint32_t next_sat_var_ = 1;
+    std::vector<std::vector<Lit>> cnf_clauses_;
 
-        auto assign_it = assignment_.find(id);
-        if (assign_it != assignment_.end()) return assign_it->second;
+    /// Allocate a SAT variable for an expression node (or return existing).
+    uint32_t allocSatVar(uint64_t expr_id) {
+        auto it = expr_to_satvar_.find(expr_id);
+        if (it != expr_to_satvar_.end()) return it->second;
+        uint32_t v = next_sat_var_++;
+        expr_to_satvar_[expr_id] = v;
+        return v;
+    }
 
+    /// Tseitin-encode expression `id` into CNF clauses.
+    /// Returns the SAT variable representing this expression's truth value.
+    uint32_t tseitinEncode(uint64_t id) {
+        if (id == TRUE_ID) return allocSatVar(TRUE_ID);
+        if (id == FALSE_ID) {
+            // FALSE is ~TRUE
+            uint32_t tv = allocSatVar(TRUE_ID);
+            uint32_t fv = allocSatVar(FALSE_ID);
+            // fv ↔ ¬tv: (¬fv ∨ ¬tv) ∧ (fv ∨ tv)
+            cnf_clauses_.push_back({Lit(fv, true), Lit(tv, true)});
+            cnf_clauses_.push_back({Lit(fv, false), Lit(tv, false)});
+            return fv;
+        }
+
+        // Check if already encoded
+        auto cached = expr_to_satvar_.find(id);
+        if (cached != expr_to_satvar_.end()) return cached->second;
+
+        // Leaf variable (bool or treated as bool)
+        if (var_names_.count(id)) {
+            return allocSatVar(id);
+        }
+
+        // NOT: g ↔ ¬a
         auto neg_it = neg_map_.find(id);
         if (neg_it != neg_map_.end()) {
-            auto val = evaluate(neg_it->second);
-            if (val) return !*val;
-            return std::nullopt;
+            uint32_t a = tseitinEncode(neg_it->second);
+            uint32_t g = allocSatVar(id);
+            // g ↔ ¬a: (g ∨ a) ∧ (¬g ∨ ¬a)
+            cnf_clauses_.push_back({Lit(g, false), Lit(a, false)});
+            cnf_clauses_.push_back({Lit(g, true), Lit(a, true)});
+            return g;
         }
 
+        // AND: g ↔ (a ∧ b)
         auto and_it = and_map_.find(id);
         if (and_it != and_map_.end()) {
-            auto a = evaluate(and_it->second.first);
-            auto b = evaluate(and_it->second.second);
-            if (a && !*a) return false;
-            if (b && !*b) return false;
-            if (a && b) return *a && *b;
-            return std::nullopt;
+            uint32_t a = tseitinEncode(and_it->second.first);
+            uint32_t b = tseitinEncode(and_it->second.second);
+            uint32_t g = allocSatVar(id);
+            // g → a: (¬g ∨ a)
+            cnf_clauses_.push_back({Lit(g, true), Lit(a, false)});
+            // g → b: (¬g ∨ b)
+            cnf_clauses_.push_back({Lit(g, true), Lit(b, false)});
+            // a ∧ b → g: (¬a ∨ ¬b ∨ g)
+            cnf_clauses_.push_back({Lit(a, true), Lit(b, true), Lit(g, false)});
+            return g;
         }
 
+        // OR: g ↔ (a ∨ b)
         auto or_it = or_map_.find(id);
         if (or_it != or_map_.end()) {
-            auto a = evaluate(or_it->second.first);
-            auto b = evaluate(or_it->second.second);
-            if (a && *a) return true;
-            if (b && *b) return true;
-            if (a && b) return *a || *b;
-            return std::nullopt;
+            uint32_t a = tseitinEncode(or_it->second.first);
+            uint32_t b = tseitinEncode(or_it->second.second);
+            uint32_t g = allocSatVar(id);
+            // g → (a ∨ b): (¬g ∨ a ∨ b)
+            cnf_clauses_.push_back({Lit(g, true), Lit(a, false), Lit(b, false)});
+            // a → g: (¬a ∨ g)
+            cnf_clauses_.push_back({Lit(a, true), Lit(g, false)});
+            // b → g: (¬b ∨ g)
+            cnf_clauses_.push_back({Lit(b, true), Lit(g, false)});
+            return g;
         }
 
+        // EQ: g ↔ (a ↔ b) — encode as (a → b) ∧ (b → a)
         auto eq_it = eq_map_.find(id);
         if (eq_it != eq_map_.end()) {
-            auto a = evaluate(eq_it->second.first);
-            auto b = evaluate(eq_it->second.second);
-            if (a && b) return *a == *b;
-            return std::nullopt;
+            uint32_t a = tseitinEncode(eq_it->second.first);
+            uint32_t b = tseitinEncode(eq_it->second.second);
+            uint32_t g = allocSatVar(id);
+            // g ↔ (a ↔ b):
+            // g → (a ↔ b): (¬g ∨ ¬a ∨ b) ∧ (¬g ∨ a ∨ ¬b)
+            cnf_clauses_.push_back({Lit(g, true), Lit(a, true), Lit(b, false)});
+            cnf_clauses_.push_back({Lit(g, true), Lit(a, false), Lit(b, true)});
+            // (a ↔ b) → g: (a ∨ b ∨ g) ∧ (¬a ∨ ¬b ∨ g)
+            cnf_clauses_.push_back({Lit(a, false), Lit(b, false), Lit(g, false)});
+            cnf_clauses_.push_back({Lit(a, true), Lit(b, true), Lit(g, false)});
+            return g;
         }
 
-        return std::nullopt;  // Free variable
-    }
-
-    /// Find first undetermined variable in assertions.
-    std::optional<uint64_t> pickVariable() {
-        for (auto h : assertions_) {
-            auto free = findFreeVar(h);
-            if (free) return free;
-        }
-        return std::nullopt;
-    }
-
-    std::optional<uint64_t> findFreeVar(uint64_t id) {
-        if (id == TRUE_ID || id == FALSE_ID) return std::nullopt;
-        if (assignment_.count(id)) return std::nullopt;
-
-        if (var_names_.count(id)) return id;
-
-        auto neg_it = neg_map_.find(id);
-        if (neg_it != neg_map_.end()) return findFreeVar(neg_it->second);
-
-        auto and_it = and_map_.find(id);
-        if (and_it != and_map_.end()) {
-            auto v = findFreeVar(and_it->second.first);
-            if (v) return v;
-            return findFreeVar(and_it->second.second);
+        // LT: treat as a fresh unconstrained boolean (theory atom)
+        if (lt_map_.count(id)) {
+            return allocSatVar(id);
         }
 
-        auto or_it = or_map_.find(id);
-        if (or_it != or_map_.end()) {
-            auto v = findFreeVar(or_it->second.first);
-            if (v) return v;
-            return findFreeVar(or_it->second.second);
+        // ADD/SUB: not directly SAT-encodable; treat as opaque
+        if (add_map_.count(id) || sub_map_.count(id)) {
+            return allocSatVar(id);
         }
 
-        return std::nullopt;
-    }
-
-    /// DPLL algorithm.
-    CheckResult dpll(const std::vector<uint64_t>& clauses,
-                     std::chrono::steady_clock::time_point deadline) {
-        if (std::chrono::steady_clock::now() > deadline)
-            return CheckResult::Unknown;
-
-        // Check if all assertions are satisfied
-        bool all_sat = true;
-        for (auto h : clauses) {
-            auto val = evaluate(h);
-            if (val && !*val) { conflicts_++; return CheckResult::Unsat; }
-            if (!val) all_sat = false;
+        // Int constants: treated as opaque atoms
+        if (int_consts_.count(id)) {
+            return allocSatVar(id);
         }
-        if (all_sat) return CheckResult::Sat;
 
-        // Pick a free variable and try both assignments
-        auto var = pickVariable();
-        if (!var) return CheckResult::Unsat;  // No free vars but not all sat
-
-        decisions_++;
-
-        // Try true
-        assignment_[*var] = true;
-        auto result = dpll(clauses, deadline);
-        if (result == CheckResult::Sat) return CheckResult::Sat;
-
-        // Try false
-        assignment_[*var] = false;
-        result = dpll(clauses, deadline);
-        if (result == CheckResult::Sat) return CheckResult::Sat;
-
-        // Backtrack
-        assignment_.erase(*var);
-        return CheckResult::Unsat;
+        // Fallback: treat as a fresh variable
+        return allocSatVar(id);
     }
 };
 

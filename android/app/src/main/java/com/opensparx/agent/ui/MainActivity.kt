@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private val app by lazy { AgentApplication.get() }
 
     private var statsPollingJob: Job? = null
+    private var isRestoringState = false
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -84,7 +85,7 @@ class MainActivity : AppCompatActivity() {
 
         // Settings
         binding.switchProactive.setOnCheckedChangeListener { _, isChecked ->
-            onProactiveToggled(isChecked)
+            if (!isRestoringState) onProactiveToggled(isChecked)
         }
         binding.sliderNpuBudget.addOnChangeListener(
             Slider.OnChangeListener { _, value, fromUser ->
@@ -207,14 +208,26 @@ class MainActivity : AppCompatActivity() {
         val proactiveEnabled = app.prefs.getBoolean(
             AgentApplication.KEY_PROACTIVE_ENABLED, false
         )
-        val npuBudget = app.prefs.getInt(AgentApplication.KEY_NPU_BUDGET, 30)
+        val npuBudget = try {
+            app.prefs.getInt(AgentApplication.KEY_NPU_BUDGET, 30)
+        } catch (e: ClassCastException) {
+            // Stored as float (0.0-1.0) — convert to percentage
+            (app.prefs.getFloat(AgentApplication.KEY_NPU_BUDGET, 0.3f) * 100).toInt()
+        }
 
+        isRestoringState = true
         binding.switchProactive.isChecked = proactiveEnabled
         binding.sliderNpuBudget.value = npuBudget.toFloat()
         binding.textNpuBudgetValue.text = "${npuBudget}%"
+        isRestoringState = false
 
         updateDashboardState()
         startStatsPolling()
+
+        // Resume proactive monitoring if it was previously enabled
+        if (proactiveEnabled) {
+            startForegroundService(Intent(this, ContextMonitorService::class.java))
+        }
 
         // Initialize engine if not already done
         if (!app.isEngineReady) {
