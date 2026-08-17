@@ -1,0 +1,37 @@
+# Build artifacts
+build/
+/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled binaries
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Test artifacts
+tests/build/
+Testing/
+
+# Qualcomm (never commit)
+genai_lib/
+utilities/
+qnn_model_prepare_*.py
