@@ -35,3 +35,4 @@ Testing/
 genai_lib/
 utilities/
 qnn_model_prepare_*.py
+build-ci/

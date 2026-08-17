@@ -72,6 +72,17 @@ if(WIN32)
     target_link_libraries(memory_short_term_core PRIVATE bcrypt)
 endif()
 
+# Check if the core source tree is present.
+# The full kernel source (src/) is proprietary and not included in the OSS
+# distribution. When absent, we build a stub library so that downstream
+# targets (cli, tests, eval) can still link.
+set(_core_source_present OFF)
+if(EXISTS "${CMAKE_SOURCE_DIR}/src/agent_dispatch/atomic_lineage.cpp")
+    set(_core_source_present ON)
+endif()
+
+if(_core_source_present)
+
 set(MASTER_AGENT_CORE_SOURCES
     # Agent dispatch
     src/agent_dispatch/atomic_lineage.cpp
@@ -202,13 +213,29 @@ endif()
 set_target_properties(master_agent_core PROPERTIES EXPORT_NAME Core)
 add_library(MasterAgent::Core ALIAS master_agent_core)
 
+else()
+# ─── OSS stub: core source not present ───────────────────────────────────
+# Build an INTERFACE library so cli/ and tests/ can still compile and link.
+# The cli implements all Agent OS functionality directly; it only needs
+# headers from include/ for type definitions.
+message(STATUS "Core source not present (OSS build) — using stub library")
+add_library(master_agent_core INTERFACE)
+target_compile_features(master_agent_core INTERFACE cxx_std_17)
+target_include_directories(master_agent_core INTERFACE
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+target_link_libraries(master_agent_core INTERFACE memory_short_term_core)
+add_library(MasterAgent::Core ALIAS master_agent_core)
+endif()
+
 # Prompt and Skill use runtime-managed JSON/text configuration. Mirror the
 # source configuration into the build tree so local executables and CTest share
 # the same relative paths as a source-tree launch.
 file(COPY "${CMAKE_SOURCE_DIR}/config"
      DESTINATION "${CMAKE_BINARY_DIR}")
 
-if(MASTER_AGENT_ENABLE_IPC)
+if(MASTER_AGENT_ENABLE_IPC AND _core_source_present)
     target_sources(master_agent_core PRIVATE
         src/transport/ipc/ipc.cpp
         src/transport/ipc/remote_services.cpp
@@ -223,7 +250,7 @@ if(MASTER_AGENT_ENABLE_QNN)
         "in this source delivery.")
 endif()
 
-if(MASTER_AGENT_BUILD_APP)
+if(MASTER_AGENT_BUILD_APP AND _core_source_present)
     add_executable(master_agent_app app/main.cpp)
     set_target_properties(master_agent_app PROPERTIES
         OUTPUT_NAME master_agent)
@@ -237,19 +264,101 @@ if(MASTER_AGENT_BUILD_CLI)
     add_subdirectory(cli)
 endif()
 
-if(MASTER_AGENT_BUILD_TESTS)
+if(MASTER_AGENT_BUILD_TESTS AND _core_source_present)
     enable_testing()
     add_subdirectory(tests)
+elseif(MASTER_AGENT_BUILD_TESTS)
+    # OSS build: only build strategic-feature tests that have source files.
+    # Like eval/, each test compiles the relevant cli sources directly.
+    enable_testing()
+    set(_cli_src "${CMAKE_SOURCE_DIR}/cli/src")
+
+    # test_integration_speculation
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_integration_speculation.cpp")
+        add_executable(test_integration_speculation
+            tests/test_integration_speculation.cpp
+            "${_cli_src}/sparx_speculative.cpp"
+            "${_cli_src}/sparx_transformer_predictor.cpp")
+        target_compile_features(test_integration_speculation PRIVATE cxx_std_17)
+        target_include_directories(test_integration_speculation PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include" "${CMAKE_SOURCE_DIR}/third_party")
+        target_link_libraries(test_integration_speculation PRIVATE MasterAgent::Core)
+        add_test(NAME test_integration_speculation COMMAND test_integration_speculation)
+    endif()
+
+    # test_orset
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_orset.cpp")
+        add_executable(test_orset
+            tests/test_orset.cpp
+            "${_cli_src}/sparx_mesh.cpp"
+            "${_cli_src}/sparx_delta_crdt.cpp")
+        target_compile_features(test_orset PRIVATE cxx_std_17)
+        target_include_directories(test_orset PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include" "${CMAKE_SOURCE_DIR}/third_party")
+        target_link_libraries(test_orset PRIVATE MasterAgent::Core)
+        add_test(NAME test_orset COMMAND test_orset)
+    endif()
+
+    # test_merkle
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_merkle.cpp")
+        add_executable(test_merkle
+            tests/test_merkle.cpp
+            "${_cli_src}/sparx_mesh.cpp"
+            "${_cli_src}/sparx_delta_crdt.cpp")
+        target_compile_features(test_merkle PRIVATE cxx_std_17)
+        target_include_directories(test_merkle PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include" "${CMAKE_SOURCE_DIR}/third_party")
+        target_link_libraries(test_merkle PRIVATE MasterAgent::Core)
+        add_test(NAME test_merkle COMMAND test_merkle)
+    endif()
+
+    # test_embedding
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_embedding.cpp")
+        add_executable(test_embedding
+            tests/test_embedding.cpp
+            "${_cli_src}/sparx_speculative.cpp")
+        target_compile_features(test_embedding PRIVATE cxx_std_17)
+        target_include_directories(test_embedding PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include" "${CMAKE_SOURCE_DIR}/third_party")
+        target_link_libraries(test_embedding PRIVATE MasterAgent::Core)
+        add_test(NAME test_embedding COMMAND test_embedding)
+    endif()
+
+    # bench_strategic
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tests/bench_strategic.cpp")
+        add_executable(bench_strategic
+            tests/bench_strategic.cpp
+            "${_cli_src}/sparx_speculative.cpp"
+            "${_cli_src}/sparx_mesh.cpp"
+            "${_cli_src}/sparx_delta_crdt.cpp"
+            "${_cli_src}/sparx_formal_verify.cpp"
+            "${_cli_src}/sparx_smt_backend.cpp")
+        target_compile_features(bench_strategic PRIVATE cxx_std_17)
+        target_include_directories(bench_strategic PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include" "${CMAKE_SOURCE_DIR}/third_party")
+        target_link_libraries(bench_strategic PRIVATE MasterAgent::Core)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            target_link_libraries(bench_strategic PRIVATE pthread)
+        endif()
+        add_test(NAME bench_strategic COMMAND bench_strategic)
+    endif()
 endif()
 
 add_subdirectory(eval)
 
+if(_core_source_present)
 install(TARGETS master_agent_core memory_short_term_core
     EXPORT MasterAgentTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+else()
+install(TARGETS memory_short_term_core
+    EXPORT MasterAgentTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 
-if(MASTER_AGENT_BUILD_APP)
+if(MASTER_AGENT_BUILD_APP AND _core_source_present)
     install(TARGETS master_agent_app RUNTIME DESTINATION bin)
 endif()
 

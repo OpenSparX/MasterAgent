@@ -42,6 +42,12 @@ set(SPARX_SOURCES
 # main(). GenieModelRuntime uses dlopen, so it builds everywhere and reports
 # "NPU unavailable" at runtime on a host without the Qualcomm stack. That is
 # what lets one binary serve both a dev laptop and a device.
+#
+# In OSS builds (core source not present), the runtime adapters and sparx
+# executable are skipped — only the strategic feature sources compile (used by
+# eval/ and tests/).
+if(_core_source_present)
+
 add_library(sparx_runtimes STATIC
     src/llama_cpp_model_runtime.cpp
     src/genie_model_runtime.cpp
@@ -120,3 +126,5 @@ if(MINGW)
 endif()
 
 install(TARGETS sparx RUNTIME DESTINATION bin)
+
+endif()  # _core_source_present
