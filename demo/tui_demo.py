@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
 OpenSparX AgentOS — Interactive TUI Demo
-Showcases: Smart Cockpit & Drone Perception scenarios
+Showcases: Smart Cockpit, Drone Perception, and Proactive Sensing scenarios
 
 Usage:
-    python3 demo/tui_demo.py [--scenario cockpit|drone]
+    python3 demo/tui_demo.py [--scenario cockpit|drone|proactive]
 
 Controls:
-    1 — Smart Cockpit scenario
-    2 — Drone Perception scenario
+    1 — Smart Cockpit (被动: 用户语音触发)
+    2 — Drone Perception (被动: 用户指令触发)
+    3 — Proactive Sensing (主动: 情境变化自动触发)
     q — Quit
 """
 
@@ -624,6 +625,224 @@ class DroneScenario:
         except curses.error:
             pass
 
+# ─── Scenario: Proactive Sensing ──────────────────────────────────────────────
+
+class ProactiveScenario:
+    """Proactive: context signals trigger tasks autonomously (no user input)."""
+
+    def __init__(self):
+        self.step = 0
+        self.max_steps = 80
+        self.agents = {
+            "CtxEngine":  {"icon": "📡", "status": "idle"},
+            "FaceCam":    {"icon": "👁", "status": "idle"},
+            "Planner":    {"icon": "🧠", "status": "idle"},
+            "Verifier":   {"icon": "🔒", "status": "idle"},
+            "Climate":    {"icon": "❄️", "status": "idle"},
+            "Media":      {"icon": "🎵", "status": "idle"},
+            "Alert":      {"icon": "⚠️", "status": "idle"},
+        }
+        self.tasks = {}
+        self.logs = []
+        self.signals = []
+        self.trigger_fired = False
+        self.dag_revealed = False
+        self.npu_load = 0.12
+    def tick(self):
+        self.step += 1
+        s = self.step
+        if s <= 20:
+            self.agents["CtxEngine"]["status"] = "active"
+            self.agents["FaceCam"]["status"] = "active"
+            self.npu_load = 0.12 + random.uniform(0, 0.05)
+            if s == 2:
+                self.signals.append(("can.speed", "72 km/h", "normal"))
+                self.logs.append("[CtxEngine] 轮询: CAN=72km/h 正常")
+            if s == 5:
+                self.signals.append(("cam.blink", "14/min", "normal"))
+                self.logs.append("[FaceCam] 眨眼: 14/min (正常)")
+            if s == 8:
+                self.signals.append(("env.time", "23:41", "elevated"))
+                self.logs.append("[CtxEngine] 深夜 → 风险权重+0.2")
+            if s == 12:
+                self.signals.append(("cam.blink", "22/min", "warning"))
+                self.logs.append("[FaceCam] ⚠ 眨眼: 22/min (>阈值20)")
+            if s == 15:
+                self.signals.append(("cam.yawn", "detected", "warning"))
+                self.logs.append("[FaceCam] ⚠ 打哈欠 conf=0.89")
+            if s == 18:
+                self.signals.append(("cam.eyelid", ">0.4s", "critical"))
+                self.logs.append("[FaceCam] ⚠ 闭眼>0.4s conf=0.94")
+            if s == 20:
+                self.signals.append(("TRIGGER", "FIRED", "critical"))
+                self.logs.append("[CtxEngine] ★ 触发: driver_fatigue")
+                self.logs.append("  条件满足: blink>20 ∧ yawn ∧ time>22:00")
+                self.trigger_fired = True
+                self.tasks["情境采集"] = 1.0
+        elif s <= 35:
+            self.agents["CtxEngine"]["status"] = "done"
+            self.agents["FaceCam"]["status"] = "done"
+            self.agents["Planner"]["status"] = "done" if s >= 30 else "active"
+            self.agents["Verifier"]["status"] = "done" if s >= 35 else ("active" if s >= 30 else "idle")
+            self.npu_load = 0.45
+            self.tasks["自主规划"] = min(1.0, (s - 20) / 12)
+            if s == 22:
+                self.logs.append("[Planner] 主动: FATIGUE_MITIGATION")
+                self.logs.append("  无需用户输入 — 情境直接触发")
+            if s == 26:
+                self.dag_revealed = True
+                self.tasks["安全验证"] = 0.0
+                self.logs.append("[Planner] DAG生成: Alert∥Climate∥Media")
+            if s == 30:
+                self.tasks["安全验证"] = 0.5
+            if s == 35:
+                self.tasks["安全验证"] = 1.0
+                self.logs.append("[Verify] ✓ 非紧急制动，可干预")
+        elif s <= 65:
+            self.agents["Alert"]["status"] = "done" if s >= 40 else "active"
+            self.agents["Climate"]["status"] = "done" if s >= 55 else "active"
+            self.agents["Media"]["status"] = "done" if s >= 50 else "active"
+            self.npu_load = 0.60
+            self.tasks["主动响应"] = min(1.0, (s - 35) / 30)
+            if s == 37:
+                self.logs.append("[Alert] '检测到疲劳，已启动缓解'")
+            if s == 40:
+                self.logs.append("[Alert] ✓ HUD显示休息建议")
+            if s == 44:
+                self.logs.append("[Climate] 降温20°C + 新风")
+            if s == 48:
+                self.logs.append("[Media] 提神歌单 BPM=155")
+            if s == 55:
+                self.logs.append("[Climate] ✓ 温度达标")
+        else:
+            self.npu_load = 0.15
+            self.tasks["主动响应"] = 1.0
+            if s == 66:
+                self.logs.append("[CtxEngine] 冷却30s 防重复触发")
+            if s == 70:
+                self.logs.append("[System] ✓ 全自主完成 零用户交互")
+    def draw(self, win, max_y, max_x):
+        try:
+            win.addstr(1, 2, "场景: 主动感知 — 情境变化自动触发 (零用户输入)",
+                       curses.color_pair(C_TITLE) | curses.A_BOLD)
+            win.addstr(2, 2, "⚡ PROACTIVE — 信号驱动，非指令驱动",
+                       curses.color_pair(C_ALERT) | curses.A_BOLD)
+        except curses.error:
+            pass
+        dag_y = 4
+        draw_box(win, dag_y, 1, 9, 78, "Proactive DAG — 自主触发链路")
+        self._draw_proactive_dag(win, dag_y + 1)
+        panel_y = dag_y + 10
+        draw_box(win, panel_y, 1, 8, 38, "情境信号流")
+        for i, (ch, val, level) in enumerate(self.signals[-6:]):
+            color = C_ALERT if level == "critical" else (
+                C_PROGRESS_ACTIVE if level == "warning" else C_DIM)
+            try:
+                win.addstr(panel_y+1+i, 3, f"{ch}: {val}",
+                           curses.color_pair(color))
+            except curses.error:
+                pass
+        draw_box(win, panel_y, 40, 8, 39, "资源管理")
+        try:
+            npu_pct = int(self.npu_load * 100)
+            npu_bar = "█"*(npu_pct//5) + "░"*(20-npu_pct//5)
+            npu_c = C_ALERT if npu_pct > 70 else (
+                C_PROGRESS_ACTIVE if npu_pct > 40 else C_SUCCESS)
+            win.addstr(panel_y+1, 42, f"NPU:{npu_bar} {npu_pct}%",
+                       curses.color_pair(npu_c))
+            win.addstr(panel_y+2, 42, "主动引擎预算: ≤30%",
+                       curses.color_pair(C_DIM))
+            st = "★ FIRED" if self.trigger_fired else "monitoring"
+            sc = C_ALERT if self.trigger_fired else C_DIM
+            win.addstr(panel_y+3, 42, f"触发器: {st}", curses.color_pair(sc))
+            row = panel_y + 4
+            for label, pct in self.tasks.items():
+                c = C_SUCCESS if pct >= 1.0 else C_PROGRESS_ACTIVE
+                bar = f"{'█'*int(pct*10)}{'░'*(10-int(pct*10))}"
+                win.addstr(row, 42, f" {label}:{bar}", curses.color_pair(c))
+                row += 1
+        except curses.error:
+            pass
+        log_y = panel_y + 9
+        draw_box(win, log_y, 1, 8, 78, "实时日志")
+        for i, log in enumerate(self.logs[-6:]):
+            color = C_ALERT if ("⚠" in log or "★" in log) else (
+                C_SUCCESS if "✓" in log else C_DIM)
+            try:
+                win.addstr(log_y+1+i, 3, log[:74], curses.color_pair(color))
+            except curses.error:
+                pass
+
+    def _draw_proactive_dag(self, win, y):
+        edge_c = curses.color_pair(C_BORDER)
+        s = self.step
+        def node(name, col, row):
+            agent = self.agents.get(name, {"status": "idle"})
+            st = agent["status"]
+            color_map = {"active": C_PROGRESS_ACTIVE, "done": C_SUCCESS, "idle": C_DIM}
+            c = color_map.get(st, C_DIM)
+            icon = agent.get("icon", "·")
+            bold = curses.A_BOLD if st in ("active", "done") else 0
+            label = f"[{icon}{name}]"
+            try:
+                win.addstr(y+row, col, label, curses.color_pair(c)|bold)
+            except curses.error:
+                pass
+            return col + len(label)
+        r = 3
+        try:
+            if not self.trigger_fired:
+                node("FaceCam", 4, r-1)
+                win.addstr(y+r-1, 15, "─┐", edge_c)
+                win.addstr(y+r, 15, " ├→", edge_c)
+                node("CtxEngine", 19, r)
+                win.addstr(y+r+1, 4, "(CAN/GPS)", curses.color_pair(C_DIM))
+                win.addstr(y+r+1, 15, "─┘", edge_c)
+                win.addstr(y+r, 33, " ··· 监测中", curses.color_pair(C_DIM))
+                win.addstr(y+1, 4, "低功耗轮询 NPU<15%",
+                           curses.color_pair(C_DIM))
+                win.addstr(y+6, 4, "条件: blink>20 ∧ yawn ∧ time>22:00",
+                           curses.color_pair(C_DIM))
+            elif not self.dag_revealed:
+                node("FaceCam", 4, r-1)
+                win.addstr(y+r-1, 15, "─┐", edge_c)
+                win.addstr(y+r, 15, " ├→", edge_c)
+                end1 = node("CtxEngine", 19, r)
+                win.addstr(y+r+1, 15, "─┘", edge_c)
+                win.addstr(y+r, end1, " ─★→ ",
+                           curses.color_pair(C_ALERT)|curses.A_BOLD)
+                node("Planner", end1+5, r)
+                dots = "."*((s-20)%4)
+                win.addstr(y+1, 4, f"★ 触发! 自主规划中{dots}",
+                           curses.color_pair(C_ALERT)|curses.A_BOLD)
+                win.addstr(y+6, 4, "零用户输入 — 信号直驱",
+                           curses.color_pair(C_DIM))
+            else:
+                node("FaceCam", 4, r-1)
+                win.addstr(y+r-1, 15, "─┐", edge_c)
+                win.addstr(y+r, 15, " ├→", edge_c)
+                end1 = node("CtxEngine", 19, r)
+                win.addstr(y+r+1, 15, "─┘", edge_c)
+                win.addstr(y+r, end1, "─★→", curses.color_pair(C_ALERT))
+                end2 = node("Planner", end1+3, r)
+                win.addstr(y+r, end2, "→", edge_c)
+                end3 = node("Verifier", end2+1, r)
+                win.addstr(y+r-1, end3, " ┬→", edge_c)
+                node("Alert", end3+3, r-1)
+                win.addstr(y+r, end3, " ├→", edge_c)
+                node("Climate", end3+3, r)
+                win.addstr(y+r+1, end3, " └→", edge_c)
+                node("Media", end3+3, r+1)
+                win.addstr(y+1, 4,
+                    "✦ Signal→Trigger→Plan→Verify→{Alert∥Climate∥Media}",
+                    curses.color_pair(C_TITLE))
+                win.addstr(y+6, 4,
+                    "零输入|情境驱动|预算≤30%|冷却30s",
+                    curses.color_pair(C_DIM))
+        except curses.error:
+            pass
+
+
 # ─── Main Loop ────────────────────────────────────────────────────────────────
 
 def draw_banner_screen(stdscr):
@@ -644,9 +863,10 @@ def draw_banner_screen(stdscr):
                       curses.color_pair(C_DIM))
         stdscr.addstr(y+3, 2, "─" * 50, curses.color_pair(C_BORDER))
         stdscr.addstr(y+5, 2, "选择演示场景:", curses.color_pair(C_TITLE) | curses.A_BOLD)
-        stdscr.addstr(y+7, 4, "[1] 智能座舱 — 多Agent疲劳缓解", curses.color_pair(C_DIM))
-        stdscr.addstr(y+8, 4, "[2] 无人机感知 — 山区火情隐患扫描", curses.color_pair(C_DIM))
-        stdscr.addstr(y+10, 4, "[q] 退出", curses.color_pair(C_DIM))
+        stdscr.addstr(y+7, 4, "[1] 智能座舱 — 被动: 用户语音触发", curses.color_pair(C_DIM))
+        stdscr.addstr(y+8, 4, "[2] 无人机感知 — 被动: 用户指令触发", curses.color_pair(C_DIM))
+        stdscr.addstr(y+9, 4, "[3] 主动感知 — 主动: 情境变化自动触发", curses.color_pair(C_DIM))
+        stdscr.addstr(y+11, 4, "[q] 退出", curses.color_pair(C_DIM))
     except curses.error:
         pass
     stdscr.refresh()
@@ -709,13 +929,15 @@ def main(stdscr):
             run_scenario(stdscr, CockpitScenario())
         elif ch == ord('2'):
             run_scenario(stdscr, DroneScenario())
+        elif ch == ord('3'):
+            run_scenario(stdscr, ProactiveScenario())
         elif ch == ord('q'):
             break
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenSparX AgentOS TUI Demo")
-    parser.add_argument("--scenario", choices=["cockpit", "drone"],
+    parser.add_argument("--scenario", choices=["cockpit", "drone", "proactive"],
                         help="Jump directly to a scenario")
     args = parser.parse_args()
 
@@ -723,10 +945,10 @@ if __name__ == "__main__":
         def _main(stdscr):
             curses.curs_set(0)
             init_colors()
-            if args.scenario == "cockpit":
-                run_scenario(stdscr, CockpitScenario())
-            else:
-                run_scenario(stdscr, DroneScenario())
+            scenarios = {"cockpit": CockpitScenario,
+                         "drone": DroneScenario,
+                         "proactive": ProactiveScenario}
+            run_scenario(stdscr, scenarios[args.scenario]())
         curses.wrapper(_main)
     else:
         curses.wrapper(main)
