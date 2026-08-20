@@ -1,1 +1,0 @@
-/private/tmp/sparx-work/android/app/build/intermediates/cxx/Debug/545r5f3n/obj/arm64-v8a

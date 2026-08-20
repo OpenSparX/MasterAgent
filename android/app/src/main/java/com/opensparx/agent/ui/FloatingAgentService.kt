@@ -157,11 +157,16 @@ class FloatingAgentService : Service() {
                     val npuLoad = AgentBridge.getNpuLoad()
                     val agentsJson = AgentBridge.getAgentsState()
                     updateWidgetState(npuLoad, agentsJson)
+                } catch (e: UnsatisfiedLinkError) {
+                    // Native library not loaded yet — show idle
+                    updateWidgetState(0f, "{}")
+                    delay(5000) // Poll less frequently when not ready
+                    continue
                 } catch (e: Exception) {
                     // Engine not ready yet, show idle
                     updateWidgetState(0f, "{}")
                 }
-                delay(500) // Update every 500ms
+                delay(1000)
             }
         }
     }

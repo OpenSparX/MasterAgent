@@ -544,13 +544,773 @@ private:
 };
 
 // ---------------------------------------------------------------------------
+// MambaPredictor — Mamba-2 Selective State Space Model with SSD Parallel Scan
+// ---------------------------------------------------------------------------
+
+/**
+ * Implements a Mamba-2 architecture for intent sequence prediction with the
+ * Structured State Space Duality (SSD) optimization from Gu & Dao (2024).
+ *
+ * Key insights:
+ *   - For diagonal A, the selective scan can be reformulated as a parallel
+ *     prefix scan using the associative operator:
+ *       combine((d1, s1), (d2, s2)) = (d1*d2, d1*s2 + s1)
+ *   - Sequences are processed in chunks of size C; within each chunk the
+ *     cumulative decay matrix D[i,j] = prod_{k=i}^{j-1} d[k] is computed
+ *     via prefix products, enabling parallel state computation.
+ *   - Inter-chunk propagation: h_final(chunk c) seeds h_init(chunk c+1).
+ *
+ * Architecture:
+ *   input_dim = 64 (matches EmbeddingVec dimension)
+ *   state_dim = 32 (SSM hidden state dimension)
+ *   chunk_size = 16 (configurable SSD chunk width)
+ *   Selective scan: h[t] = Ā*h[t-1] + B̄[t], y[t] = C*h[t]
+ *   Gating: output = σ(W_gate * x) ⊙ y
+ *   Online training: truncated BPTT with SSD parallel forward pass
+ */
+class MambaPredictor {
+public:
+    static constexpr size_t kInputDim = 64;    // matches kEmbeddingDim
+    static constexpr size_t kStateDim = 32;    // SSM hidden state dimension
+    static constexpr size_t kDefaultChunkSize = 16;  // SSD parallel chunk width
+
+    MambaPredictor(size_t num_intents_hint = 0,
+                   float learning_rate = 0.005f,
+                   uint32_t bptt_length = 16,
+                   size_t chunk_size = kDefaultChunkSize)
+        : lr_(learning_rate), bptt_length_(bptt_length),
+          chunk_size_(chunk_size) {
+        initWeights();
+        if (num_intents_hint > 0) {
+            growOutputLayer(num_intents_hint);
+        }
+    }
+
+    /// Register an intent in the vocabulary, returns its index.
+    size_t registerIntent(const std::string& intent) {
+        auto it = intent_to_idx_.find(intent);
+        if (it != intent_to_idx_.end()) return it->second;
+        size_t idx = idx_to_intent_.size();
+        intent_to_idx_[intent] = idx;
+        idx_to_intent_.push_back(intent);
+        growOutputLayer(idx + 1);
+        return idx;
+    }
+
+    size_t vocabSize() const { return idx_to_intent_.size(); }
+
+    /// Set an NPU dispatcher for hardware-accelerated parallel scan.
+    void setNpuDispatcher(NpuScanDispatcher* dispatcher) {
+        npu_dispatcher_ = dispatcher;
+    }
+
+    /// Run forward pass (sequential fallback): selective scan, return softmax.
+    std::vector<float> predict(const std::vector<EmbeddingVec>& seq) {
+        if (seq.empty() || idx_to_intent_.empty()) return {};
+
+        // Reset SSM state
+        std::array<float, kStateDim> h{};
+        h.fill(0.0f);
+
+        // Selective scan over the sequence (sequential O(T) recurrence)
+        std::array<float, kStateDim> y_final{};
+        for (const auto& x : seq) {
+            selectiveScanStep(x, h, y_final);
+        }
+
+        return projectOutput(y_final, seq.back());
+    }
+
+    /// Run forward pass using SSD parallel scan (O(T/C) sequential depth).
+    /// Falls back to sequential if sequence is shorter than one chunk.
+    std::vector<float> predictParallel(const std::vector<EmbeddingVec>& seq) {
+        if (seq.empty() || idx_to_intent_.empty()) return {};
+
+        size_t T = seq.size();
+
+        // For very short sequences, sequential is faster (no chunk overhead)
+        if (T <= chunk_size_) {
+            return predict(seq);
+        }
+
+        // Run SSD parallel scan
+        std::array<float, kStateDim> h_init{};
+        h_init.fill(0.0f);
+
+        auto [h_states, y_states] = parallelScan(seq, h_init);
+
+        // y_states[T-1] is our final output
+        return projectOutput(y_states[T - 1], seq.back());
+    }
+
+    /// Benchmark: run both paths and return timing comparison.
+    ScanBenchmark benchmark(const std::vector<EmbeddingVec>& seq) {
+        ScanBenchmark result;
+        if (seq.empty() || idx_to_intent_.empty()) return result;
+
+        // Warm up
+        predict(seq);
+        predictParallel(seq);
+
+        // Sequential timing
+        {
+            auto t0 = std::chrono::steady_clock::now();
+            for (int i = 0; i < 10; ++i) predict(seq);
+            auto t1 = std::chrono::steady_clock::now();
+            result.sequential_us = std::chrono::duration<double, std::micro>(
+                t1 - t0).count() / 10.0;
+        }
+
+        // Parallel timing
+        {
+            auto t0 = std::chrono::steady_clock::now();
+            for (int i = 0; i < 10; ++i) predictParallel(seq);
+            auto t1 = std::chrono::steady_clock::now();
+            result.parallel_us = std::chrono::duration<double, std::micro>(
+                t1 - t0).count() / 10.0;
+        }
+
+        return result;
+    }
+
+    /// Online training with truncated BPTT using SSD parallel forward pass.
+    void train(const std::vector<EmbeddingVec>& seq, size_t target_idx) {
+        if (seq.empty() || target_idx >= idx_to_intent_.size()) return;
+
+        // Truncate sequence to bptt_length_
+        size_t T = std::min(static_cast<size_t>(bptt_length_), seq.size());
+        size_t start = seq.size() > T ? seq.size() - T : 0;
+
+        // Build the truncated subsequence
+        std::vector<EmbeddingVec> sub_seq(seq.begin() + start, seq.begin() + start + T);
+
+        // Use SSD parallel forward pass to compute cached states efficiently.
+        // For sequences >= chunk_size_, the parallel scan reduces sequential depth.
+        std::array<float, kStateDim> h_init{};
+        h_init.fill(0.0f);
+
+        // Forward pass with cached intermediates (parallel or sequential based on T)
+        std::vector<std::array<float, kStateDim>> h_states(T + 1);
+        std::vector<std::array<float, kStateDim>> y_states(T);
+        std::vector<std::array<float, kStateDim>> A_bar_states(T);
+        std::vector<std::array<float, kStateDim>> B_bar_states(T);
+        std::vector<float> dt_states(T);
+
+        h_states[0] = h_init;
+
+        if (T >= chunk_size_ && T > 1) {
+            // Use SSD parallel scan for the forward pass (compute all h_states)
+            auto [par_h, par_y] = parallelScan(sub_seq, h_init);
+            // Copy results and also compute per-step A_bar, B_bar, dt for backprop
+            for (size_t t = 0; t < T; ++t) {
+                h_states[t + 1] = par_h[t + 1];
+                y_states[t] = par_y[t];
+                // Recompute discretization parameters (needed for gradient computation)
+                const auto& x = sub_seq[t];
+                float dt_pre = b_dt_;
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    dt_pre += W_dt_[j] * x[j];
+                }
+                float dt = std::log(1.0f + std::exp(dt_pre));
+                dt_states[t] = dt;
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    A_bar_states[t][i] = std::exp(A_diag_[i] * dt);
+                }
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    float b_proj = 0.0f;
+                    for (size_t j = 0; j < kInputDim; ++j) {
+                        b_proj += W_B_[i * kInputDim + j] * x[j];
+                    }
+                    B_bar_states[t][i] = dt * b_proj;
+                }
+            }
+        } else {
+            // Sequential forward pass for short sequences
+            for (size_t t = 0; t < T; ++t) {
+                const auto& x = sub_seq[t];
+                float dt_pre = b_dt_;
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    dt_pre += W_dt_[j] * x[j];
+                }
+                float dt = std::log(1.0f + std::exp(dt_pre));
+                dt_states[t] = dt;
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    A_bar_states[t][i] = std::exp(A_diag_[i] * dt);
+                }
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    float b_proj = 0.0f;
+                    for (size_t j = 0; j < kInputDim; ++j) {
+                        b_proj += W_B_[i * kInputDim + j] * x[j];
+                    }
+                    B_bar_states[t][i] = dt * b_proj;
+                }
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    h_states[t + 1][i] = A_bar_states[t][i] * h_states[t][i]
+                                       + B_bar_states[t][i];
+                }
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    y_states[t][i] = C_[i] * h_states[t + 1][i];
+                }
+            }
+        }
+
+        // Gating on last step
+        const auto& x_last = sub_seq[T - 1];
+        std::array<float, kStateDim> gate;
+        for (size_t i = 0; i < kStateDim; ++i) {
+            float sum = b_gate_[i];
+            for (size_t j = 0; j < kInputDim; ++j) {
+                sum += W_gate_[i * kInputDim + j] * x_last[j];
+            }
+            gate[i] = 1.0f / (1.0f + std::exp(-sum));
+        }
+
+        std::array<float, kStateDim> gated;
+        for (size_t i = 0; i < kStateDim; ++i) {
+            gated[i] = gate[i] * y_states[T - 1][i];
+        }
+
+        // Output logits and loss
+        size_t num_intents = idx_to_intent_.size();
+        std::vector<float> logits(num_intents, 0.0f);
+        for (size_t i = 0; i < num_intents; ++i) {
+            float sum = b_out_[i];
+            for (size_t j = 0; j < kStateDim; ++j) {
+                sum += W_out_[i * kStateDim + j] * gated[j];
+            }
+            logits[i] = sum;
+        }
+        auto probs = softmax(logits);
+
+        // Backprop through output layer
+        std::vector<float> d_logits(num_intents);
+        for (size_t i = 0; i < num_intents; ++i) {
+            d_logits[i] = probs[i] - (i == target_idx ? 1.0f : 0.0f);
+        }
+
+        // Gradient for W_out, b_out
+        std::array<float, kStateDim> d_gated{};
+        for (size_t i = 0; i < num_intents; ++i) {
+            b_out_[i] -= lr_ * d_logits[i];
+            for (size_t j = 0; j < kStateDim; ++j) {
+                float grad = d_logits[i] * gated[j];
+                W_out_[i * kStateDim + j] -= lr_ * grad;
+                d_gated[j] += d_logits[i] * W_out_[i * kStateDim + j];
+            }
+        }
+
+        // Backprop through gating
+        std::array<float, kStateDim> d_y_last{};
+        std::array<float, kStateDim> d_gate{};
+        for (size_t i = 0; i < kStateDim; ++i) {
+            d_y_last[i] = d_gated[i] * gate[i];
+            d_gate[i] = d_gated[i] * y_states[T - 1][i] * gate[i] * (1.0f - gate[i]);
+        }
+
+        // Update gate weights
+        for (size_t i = 0; i < kStateDim; ++i) {
+            b_gate_[i] -= lr_ * d_gate[i];
+            for (size_t j = 0; j < kInputDim; ++j) {
+                W_gate_[i * kInputDim + j] -= lr_ * d_gate[i] * x_last[j];
+            }
+        }
+
+        // Backprop through C (output mapping) at last timestep
+        std::array<float, kStateDim> d_h{};
+        for (size_t i = 0; i < kStateDim; ++i) {
+            float d_C = d_y_last[i] * h_states[T][i];
+            C_[i] -= lr_ * d_C;
+            d_h[i] = d_y_last[i] * C_[i];
+        }
+
+        // Truncated BPTT through the SSM recurrence
+        for (int t = static_cast<int>(T) - 1; t >= 0; --t) {
+            const auto& x = sub_seq[t];
+
+            for (size_t i = 0; i < kStateDim; ++i) {
+                // Gradient for A_diag (through Ā = exp(A*dt))
+                float d_A_bar = d_h[i] * h_states[t][i];
+                float d_A = d_A_bar * A_bar_states[t][i] * dt_states[t];
+                A_diag_[i] -= lr_ * std::max(-1.0f, std::min(1.0f, d_A));
+
+                // Gradient for B projection weights
+                float d_B_bar = d_h[i];
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    float d_W_B = d_B_bar * dt_states[t] * x[j];
+                    W_B_[i * kInputDim + j] -= lr_ * std::max(-1.0f, std::min(1.0f, d_W_B));
+                }
+
+                // Gradient for dt (through both A_bar and B_bar)
+                float d_dt_from_A = d_A_bar * A_bar_states[t][i] * A_diag_[i];
+                float b_proj = 0.0f;
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    b_proj += W_B_[i * kInputDim + j] * x[j];
+                }
+                float d_dt_from_B = d_B_bar * b_proj;
+                float d_dt_total = d_dt_from_A + d_dt_from_B;
+
+                // softplus derivative: d_softplus/d_pre = sigmoid(pre)
+                float dt_pre = b_dt_;
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    dt_pre += W_dt_[j] * x[j];
+                }
+                float sig_dt = 1.0f / (1.0f + std::exp(-dt_pre));
+                float d_dt_pre = d_dt_total * sig_dt / static_cast<float>(kStateDim);
+
+                // Update dt projection weights
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    W_dt_[j] -= lr_ * std::max(-0.1f, std::min(0.1f, d_dt_pre * x[j]));
+                }
+                b_dt_ -= lr_ * std::max(-0.1f, std::min(0.1f, d_dt_pre));
+            }
+
+            // Propagate gradient to previous timestep
+            std::array<float, kStateDim> d_h_prev{};
+            for (size_t i = 0; i < kStateDim; ++i) {
+                d_h_prev[i] = d_h[i] * A_bar_states[t][i];
+            }
+            d_h = d_h_prev;
+        }
+    }
+
+    /// Save weights to binary file.
+    bool save(const std::string& path) const {
+        auto parent = std::filesystem::path(path).parent_path();
+        std::filesystem::create_directories(parent);
+
+        std::ofstream out(path, std::ios::binary);
+        if (!out) return false;
+
+        uint32_t magic = 0x4D414D42;  // "MAMB"
+        uint32_t version = 2;  // bumped for SSD fields
+        uint32_t vocab_size = static_cast<uint32_t>(idx_to_intent_.size());
+        out.write(reinterpret_cast<const char*>(&magic), 4);
+        out.write(reinterpret_cast<const char*>(&version), 4);
+        out.write(reinterpret_cast<const char*>(&vocab_size), 4);
+
+        // Write chunk_size configuration
+        uint32_t cs = static_cast<uint32_t>(chunk_size_);
+        out.write(reinterpret_cast<const char*>(&cs), 4);
+
+        // Write vocab
+        for (const auto& name : idx_to_intent_) {
+            uint16_t len = static_cast<uint16_t>(name.size());
+            out.write(reinterpret_cast<const char*>(&len), 2);
+            out.write(name.data(), len);
+        }
+
+        // Write SSM parameters
+        out.write(reinterpret_cast<const char*>(A_diag_.data()), kStateDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(C_.data()), kStateDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_B_.data()), W_B_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_dt_.data()), kInputDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(&b_dt_), sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_gate_.data()), W_gate_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(b_gate_.data()), kStateDim * sizeof(float));
+        out.write(reinterpret_cast<const char*>(W_out_.data()), W_out_.size() * sizeof(float));
+        out.write(reinterpret_cast<const char*>(b_out_.data()), b_out_.size() * sizeof(float));
+
+        return out.good();
+    }
+
+    /// Load weights from binary file.
+    bool load(const std::string& path) {
+        if (!std::filesystem::exists(path)) return false;
+
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+
+        uint32_t magic = 0, version = 0, vocab_size = 0;
+        in.read(reinterpret_cast<char*>(&magic), 4);
+        in.read(reinterpret_cast<char*>(&version), 4);
+        in.read(reinterpret_cast<char*>(&vocab_size), 4);
+
+        if (magic != 0x4D414D42 || (version != 1 && version != 2)) return false;
+
+        // Version 2 adds chunk_size field
+        if (version >= 2) {
+            uint32_t cs = 0;
+            in.read(reinterpret_cast<char*>(&cs), 4);
+            if (cs > 0 && cs <= 256) chunk_size_ = static_cast<size_t>(cs);
+        }
+
+        // Read vocab
+        intent_to_idx_.clear();
+        idx_to_intent_.clear();
+        for (uint32_t i = 0; i < vocab_size; ++i) {
+            uint16_t len = 0;
+            in.read(reinterpret_cast<char*>(&len), 2);
+            std::string name(len, '\0');
+            in.read(name.data(), len);
+            intent_to_idx_[name] = i;
+            idx_to_intent_.push_back(name);
+        }
+
+        // Read SSM parameters
+        in.read(reinterpret_cast<char*>(A_diag_.data()), kStateDim * sizeof(float));
+        in.read(reinterpret_cast<char*>(C_.data()), kStateDim * sizeof(float));
+        in.read(reinterpret_cast<char*>(W_B_.data()), W_B_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(W_dt_.data()), kInputDim * sizeof(float));
+        in.read(reinterpret_cast<char*>(&b_dt_), sizeof(float));
+        in.read(reinterpret_cast<char*>(W_gate_.data()), W_gate_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(b_gate_.data()), kStateDim * sizeof(float));
+
+        growOutputLayer(vocab_size);
+        in.read(reinterpret_cast<char*>(W_out_.data()), W_out_.size() * sizeof(float));
+        in.read(reinterpret_cast<char*>(b_out_.data()), b_out_.size() * sizeof(float));
+
+        return in.good();
+    }
+
+    const std::map<std::string, size_t>& intentIndex() const { return intent_to_idx_; }
+    const std::string& intentName(size_t idx) const { return idx_to_intent_[idx]; }
+
+    /// Get/set the SSD chunk size.
+    size_t chunkSize() const { return chunk_size_; }
+    void setChunkSize(size_t cs) { if (cs > 0) chunk_size_ = cs; }
+
+private:
+    float lr_;
+    uint32_t bptt_length_;
+    size_t chunk_size_;
+
+    // SSM diagonal state matrix A (negative values for stability)
+    std::array<float, kStateDim> A_diag_;
+    // Output mapping C
+    std::array<float, kStateDim> C_;
+    // Input-dependent B projection: kStateDim x kInputDim
+    std::vector<float> W_B_;
+    // dt (discretization step) projection: kInputDim -> scalar
+    std::array<float, kInputDim> W_dt_;
+    float b_dt_ = 0.0f;
+    // Gating: kStateDim x kInputDim
+    std::vector<float> W_gate_;
+    std::array<float, kStateDim> b_gate_;
+    // Output projection: num_intents x kStateDim
+    std::vector<float> W_out_;
+    std::vector<float> b_out_;
+
+    // Vocab
+    std::map<std::string, size_t> intent_to_idx_;
+    std::vector<std::string> idx_to_intent_;
+
+    // Optional NPU dispatcher for hardware-accelerated scan
+    NpuScanDispatcher* npu_dispatcher_ = nullptr;
+
+    // -----------------------------------------------------------------------
+    // SSD Parallel Scan — Structured State Space Duality (Gu & Dao 2024)
+    // -----------------------------------------------------------------------
+
+    /**
+     * @brief Parallel prefix scan implementing the SSD associative operator.
+     *
+     * For diagonal A, the recurrence h[t] = d[t]*h[t-1] + B_bar[t] can be
+     * computed as a parallel prefix scan with the associative operator:
+     *   combine((d1, s1), (d2, s2)) = (d1*d2, d2*s1 + s2)
+     *
+     * This processes the sequence in chunks of size C:
+     *   1. Within each chunk: compute all states via parallel prefix scan
+     *   2. Between chunks: propagate final state of chunk c as initial state of c+1
+     *
+     * The within-chunk computation has O(log C) sequential depth per state dimension,
+     * and the inter-chunk propagation is O(num_chunks) sequential.
+     *
+     * SIMD hints: state arrays are 64-byte aligned for AVX-512 / NEON auto-vectorization.
+     *
+     * @param seq Full input sequence of embeddings.
+     * @param h_init Initial hidden state for the scan.
+     * @return Pair of (h_states[T+1], y_states[T]) — all intermediate states.
+     */
+    std::pair<std::vector<std::array<float, kStateDim>>,
+              std::vector<std::array<float, kStateDim>>>
+    parallelScan(const std::vector<EmbeddingVec>& seq,
+                 const std::array<float, kStateDim>& h_init) {
+
+        size_t T = seq.size();
+        size_t C = chunk_size_;
+        size_t num_chunks = (T + C - 1) / C;
+
+        // Output arrays: h_states[0..T], y_states[0..T-1]
+        std::vector<std::array<float, kStateDim>> h_states(T + 1);
+        std::vector<std::array<float, kStateDim>> y_states(T);
+
+        h_states[0] = h_init;
+
+        // Pre-compute per-step decay and input for the entire sequence.
+        // These are aligned for SIMD auto-vectorization.
+        // Layout: decay_buf[t * kStateDim + i], input_buf[t * kStateDim + i]
+        alignas(64) std::vector<float> decay_buf(T * kStateDim);
+        alignas(64) std::vector<float> input_buf(T * kStateDim);
+
+        // Compute discretized A_bar and B_bar for all timesteps
+        for (size_t t = 0; t < T; ++t) {
+            const auto& x = seq[t];
+
+            // dt = softplus(W_dt * x + b_dt)
+            float dt_pre = b_dt_;
+            for (size_t j = 0; j < kInputDim; ++j) {
+                dt_pre += W_dt_[j] * x[j];
+            }
+            float dt = std::log(1.0f + std::exp(dt_pre));
+
+            // Ā[t] = exp(A_diag * dt) — per-step decay
+            for (size_t i = 0; i < kStateDim; ++i) {
+                decay_buf[t * kStateDim + i] = std::exp(A_diag_[i] * dt);
+            }
+
+            // B̄[t] = dt * B_proj(x) — per-step input
+            for (size_t i = 0; i < kStateDim; ++i) {
+                float b_proj = 0.0f;
+                for (size_t j = 0; j < kInputDim; ++j) {
+                    b_proj += W_B_[i * kInputDim + j] * x[j];
+                }
+                input_buf[t * kStateDim + i] = dt * b_proj;
+            }
+        }
+
+        // Process each chunk. Inter-chunk is sequential; within-chunk is parallel.
+        std::array<float, kStateDim> chunk_h_init = h_init;
+
+        for (size_t chunk = 0; chunk < num_chunks; ++chunk) {
+            size_t chunk_start = chunk * C;
+            size_t chunk_len = std::min(C, T - chunk_start);
+
+            // Check if NPU dispatch is available for this chunk
+            if (npu_dispatcher_ && npu_dispatcher_->isAvailable() && chunk_len >= 4) {
+                // Dispatch to NPU: it computes all states within the chunk
+                // Output: chunk_len + 1 states (including h_init for this chunk)
+                alignas(64) std::vector<float> npu_out((chunk_len + 1) * kStateDim);
+
+                npu_dispatcher_->dispatchChunk(
+                    decay_buf.data() + chunk_start * kStateDim,
+                    input_buf.data() + chunk_start * kStateDim,
+                    chunk_h_init.data(),
+                    chunk_len,
+                    kStateDim,
+                    npu_out.data());
+
+                npu_dispatcher_->syncResults();
+
+                // Unpack NPU results into h_states
+                for (size_t t = 0; t <= chunk_len; ++t) {
+                    for (size_t i = 0; i < kStateDim; ++i) {
+                        h_states[chunk_start + t][i] = npu_out[t * kStateDim + i];
+                    }
+                }
+            } else {
+                // CPU parallel prefix scan within chunk.
+                // The associative scan operator for (decay, sum) tuples:
+                //   combine((d1, s1), (d2, s2)) = (d1*d2, d2*s1 + s2)
+                //
+                // We use the Blelloch (1990) work-efficient parallel prefix algorithm.
+                // For a CPU implementation this executes sequentially but with
+                // vectorizable inner loops over kStateDim.
+
+                // Temporary scan buffers for the prefix computation.
+                // scan_decay[t][i] = cumulative decay from chunk_start to chunk_start+t
+                // scan_sum[t][i] = accumulated weighted input
+                struct alignas(64) ScanElement {
+                    std::array<float, kStateDim> decay;
+                    std::array<float, kStateDim> sum;
+                };
+
+                std::vector<ScanElement> scan(chunk_len);
+
+                // Initialize scan elements from per-step values
+                for (size_t t = 0; t < chunk_len; ++t) {
+                    size_t global_t = chunk_start + t;
+                    for (size_t i = 0; i < kStateDim; ++i) {
+                        scan[t].decay[i] = decay_buf[global_t * kStateDim + i];
+                        scan[t].sum[i] = input_buf[global_t * kStateDim + i];
+                    }
+                }
+
+                // Inclusive prefix scan with the associative operator.
+                // combine((d1, s1), (d2, s2)) = (d1*d2, d2*s1 + s2)
+                // After this, scan[t] holds the combined (decay, sum) from step 0..t
+                // meaning h[t+1] = scan[t].decay * h_init + scan[t].sum
+                for (size_t t = 1; t < chunk_len; ++t) {
+                    // Fuse previous into current: scan[t] = combine(scan[t-1], scan[t])
+                    // This inner loop is structured for auto-vectorization over i
+                    for (size_t i = 0; i < kStateDim; ++i) {
+                        scan[t].sum[i] = scan[t].decay[i] * scan[t - 1].sum[i]
+                                       + scan[t].sum[i];
+                        scan[t].decay[i] = scan[t - 1].decay[i] * scan[t].decay[i];
+                    }
+                }
+
+                // Materialize h_states from scan results:
+                // h[chunk_start + t + 1] = scan[t].decay * h_init + scan[t].sum
+                h_states[chunk_start] = chunk_h_init;
+                for (size_t t = 0; t < chunk_len; ++t) {
+                    for (size_t i = 0; i < kStateDim; ++i) {
+                        h_states[chunk_start + t + 1][i] =
+                            scan[t].decay[i] * chunk_h_init[i] + scan[t].sum[i];
+                    }
+                }
+            }
+
+            // Compute y_states for this chunk: y[t] = C * h[t+1]
+            for (size_t t = 0; t < chunk_len; ++t) {
+                for (size_t i = 0; i < kStateDim; ++i) {
+                    y_states[chunk_start + t][i] = C_[i] * h_states[chunk_start + t + 1][i];
+                }
+            }
+
+            // Inter-chunk propagation: final state of this chunk is init for next
+            chunk_h_init = h_states[chunk_start + chunk_len];
+        }
+
+        return {std::move(h_states), std::move(y_states)};
+    }
+
+    // -----------------------------------------------------------------------
+    // Output projection (shared between predict and predictParallel)
+    // -----------------------------------------------------------------------
+
+    std::vector<float> projectOutput(const std::array<float, kStateDim>& y_final,
+                                     const EmbeddingVec& x_last) {
+        // Gating: gate = sigmoid(W_gate * x_last)
+        std::array<float, kStateDim> gate;
+        for (size_t i = 0; i < kStateDim; ++i) {
+            float sum = b_gate_[i];
+            for (size_t j = 0; j < kInputDim; ++j) {
+                sum += W_gate_[i * kInputDim + j] * x_last[j];
+            }
+            gate[i] = 1.0f / (1.0f + std::exp(-sum));
+        }
+
+        // Gated output: gated = gate ⊙ y
+        std::array<float, kStateDim> gated;
+        for (size_t i = 0; i < kStateDim; ++i) {
+            gated[i] = gate[i] * y_final[i];
+        }
+
+        // Output projection: logits = W_out * gated + b_out
+        size_t num_intents = idx_to_intent_.size();
+        std::vector<float> logits(num_intents, 0.0f);
+        for (size_t i = 0; i < num_intents; ++i) {
+            float sum = b_out_[i];
+            for (size_t j = 0; j < kStateDim; ++j) {
+                sum += W_out_[i * kStateDim + j] * gated[j];
+            }
+            logits[i] = sum;
+        }
+        return softmax(logits);
+    }
+
+    // -----------------------------------------------------------------------
+    // Initialization and utilities
+    // -----------------------------------------------------------------------
+
+    void initWeights() {
+        // Initialize A as negative values (ensures stable dynamics)
+        // HiPPO initialization: A_n = -(n + 1)
+        for (size_t i = 0; i < kStateDim; ++i) {
+            A_diag_[i] = -static_cast<float>(i + 1) * 0.1f;
+        }
+
+        // C initialized near zero
+        C_.fill(0.01f);
+
+        // W_B: Xavier init
+        W_B_.resize(kStateDim * kInputDim);
+        float limit_B = std::sqrt(6.0f / static_cast<float>(kStateDim + kInputDim));
+        std::mt19937 rng(123);
+        std::uniform_real_distribution<float> dist_B(-limit_B, limit_B);
+        for (auto& w : W_B_) w = dist_B(rng);
+
+        // W_dt: small initialization (dt should start small for stability)
+        W_dt_.fill(0.0f);
+        b_dt_ = 0.5f;  // softplus(0.5) ~ 0.97, reasonable initial dt
+
+        // W_gate: Xavier init
+        W_gate_.resize(kStateDim * kInputDim);
+        float limit_G = std::sqrt(6.0f / static_cast<float>(kStateDim + kInputDim));
+        std::uniform_real_distribution<float> dist_G(-limit_G, limit_G);
+        for (auto& w : W_gate_) w = dist_G(rng);
+        b_gate_.fill(0.0f);
+    }
+
+    void growOutputLayer(size_t new_size) {
+        size_t old_size = b_out_.size();
+        if (new_size <= old_size) return;
+
+        float limit = std::sqrt(6.0f / static_cast<float>(kStateDim + new_size));
+        std::mt19937 rng(static_cast<uint32_t>(old_size * 11 + 7));
+        std::uniform_real_distribution<float> dist(-limit, limit);
+
+        std::vector<float> new_W_out(new_size * kStateDim, 0.0f);
+        for (size_t i = 0; i < old_size; ++i) {
+            for (size_t j = 0; j < kStateDim; ++j) {
+                new_W_out[i * kStateDim + j] = W_out_[i * kStateDim + j];
+            }
+        }
+        for (size_t i = old_size; i < new_size; ++i) {
+            for (size_t j = 0; j < kStateDim; ++j) {
+                new_W_out[i * kStateDim + j] = dist(rng);
+            }
+        }
+        W_out_ = std::move(new_W_out);
+        b_out_.resize(new_size, 0.0f);
+    }
+
+    void selectiveScanStep(const EmbeddingVec& x,
+                           std::array<float, kStateDim>& h,
+                           std::array<float, kStateDim>& y) {
+        // Compute dt = softplus(W_dt * x + b_dt)
+        float dt_pre = b_dt_;
+        for (size_t j = 0; j < kInputDim; ++j) {
+            dt_pre += W_dt_[j] * x[j];
+        }
+        float dt = std::log(1.0f + std::exp(dt_pre));
+
+        // Discretize and scan
+        for (size_t i = 0; i < kStateDim; ++i) {
+            // Ā = exp(A_i * dt)
+            float A_bar = std::exp(A_diag_[i] * dt);
+
+            // B̄ = dt * B_proj_i(x)  (Euler discretization)
+            float b_proj = 0.0f;
+            for (size_t j = 0; j < kInputDim; ++j) {
+                b_proj += W_B_[i * kInputDim + j] * x[j];
+            }
+            float B_bar = dt * b_proj;
+
+            // Recurrence
+            h[i] = A_bar * h[i] + B_bar;
+
+            // Output
+            y[i] = C_[i] * h[i];
+        }
+    }
+
+    static std::vector<float> softmax(const std::vector<float>& logits) {
+        std::vector<float> result(logits.size());
+        float max_val = *std::max_element(logits.begin(), logits.end());
+        float sum = 0.0f;
+        for (size_t i = 0; i < logits.size(); ++i) {
+            result[i] = std::exp(logits[i] - max_val);
+            sum += result[i];
+        }
+        if (sum > 0.0f) {
+            for (auto& v : result) v /= sum;
+        }
+        return result;
+    }
+};
+
+// ---------------------------------------------------------------------------
 // IntentPredictor
 // ---------------------------------------------------------------------------
 
 IntentPredictor::IntentPredictor(PredictionConfig config)
     : config_(std::move(config)),
       lstm_(std::make_unique<LstmPredictor>(config_.lstm_learning_rate,
-                                             config_.lstm_grad_clip)) {
+                                             config_.lstm_grad_clip)),
+      mamba_(std::make_unique<MambaPredictor>(0, config_.mamba_learning_rate,
+                                              config_.mamba_bptt_length,
+                                              MambaPredictor::kDefaultChunkSize)) {
     // Attempt to load persisted LSTM weights
     std::string lstm_path = config_.lstm_weights_path;
     if (lstm_path.empty()) {
@@ -560,6 +1320,17 @@ IntentPredictor::IntentPredictor(PredictionConfig config)
     }
     if (!lstm_path.empty()) {
         lstm_->load(lstm_path);
+    }
+
+    // Attempt to load persisted Mamba-2 weights
+    std::string mamba_path = config_.mamba_weights_path;
+    if (mamba_path.empty()) {
+        if (const char* home = std::getenv("HOME")) {
+            mamba_path = std::string(home) + "/.sparx/speculation/mamba.bin";
+        }
+    }
+    if (!mamba_path.empty()) {
+        mamba_->load(mamba_path);
     }
 }
 
@@ -615,6 +1386,17 @@ void IntentPredictor::observe(const IntentRecord& record) {
         // Target is the current intent
         size_t target_idx = lstm_->registerIntent(record.intent_name);
         lstm_->train(seq, target_idx);
+    }
+
+    // Level 4 Mamba-2 online learning: train on recent history with truncated BPTT
+    if (recent_history_.size() >= config_.mamba_min_history) {
+        std::vector<EmbeddingVec> seq;
+        seq.reserve(recent_history_.size());
+        for (const auto& r : recent_history_) {
+            seq.push_back(intent_embedder_.embed(r.intent_name));
+        }
+        size_t mamba_target_idx = mamba_->registerIntent(record.intent_name);
+        mamba_->train(seq, mamba_target_idx);
     }
 
     // Maintain history window
@@ -706,10 +1488,44 @@ std::vector<IntentPrediction> IntentPredictor::predict(
         }
     }
 
-    // Blend Level 1&2 (n-gram) and Level 3 (LSTM) via weighted ensemble
+    // Level 4: Mamba-2 SSM prediction using SSD parallel scan (when sufficient history)
+    std::map<std::string, float> mamba_scores;
+    bool use_mamba = (recent_history_.size() >= config_.mamba_min_history &&
+                      mamba_->vocabSize() > 0);
+
+    if (use_mamba) {
+        std::vector<EmbeddingVec> seq;
+        seq.reserve(recent_history_.size());
+        for (const auto& r : recent_history_) {
+            seq.push_back(intent_embedder_.embed(r.intent_name));
+        }
+        // Use SSD parallel path for sequences exceeding one chunk
+        auto probs = mamba_->predictParallel(seq);
+        for (size_t i = 0; i < probs.size(); ++i) {
+            if (probs[i] > 0.01f) {
+                mamba_scores[mamba_->intentName(i)] = probs[i];
+            }
+        }
+    }
+
+    // Blend all levels via weighted ensemble
+    // Weights are dynamically normalized based on which levels are active
     std::map<std::string, float> scores;
-    float w_ngram = use_lstm ? config_.ngram_weight : 1.0f;
+    float total_weight = 0.0f;
+    float w_ngram = 1.0f;  // ngram always active
     float w_lstm = use_lstm ? config_.lstm_weight : 0.0f;
+    float w_mamba = use_mamba ? config_.mamba_weight : 0.0f;
+
+    // If neural models are active, use configured ngram weight; else ngram gets all
+    if (use_lstm || use_mamba) {
+        w_ngram = config_.ngram_weight;
+    }
+    total_weight = w_ngram + w_lstm + w_mamba;
+    if (total_weight > 0.0f) {
+        w_ngram /= total_weight;
+        w_lstm /= total_weight;
+        w_mamba /= total_weight;
+    }
 
     // Merge all candidate intents
     for (const auto& [intent, score] : ngram_scores) {
@@ -717,6 +1533,9 @@ std::vector<IntentPrediction> IntentPredictor::predict(
     }
     for (const auto& [intent, score] : lstm_scores) {
         scores[intent] += score * w_lstm;
+    }
+    for (const auto& [intent, score] : mamba_scores) {
+        scores[intent] += score * w_mamba;
     }
 
     // Sort by score and return top-k above threshold
@@ -737,9 +1556,12 @@ std::vector<IntentPrediction> IntentPredictor::predict(
         auto phrasing_it = canonical_phrasing_.find(intent);
         pred.predicted_input = (phrasing_it != canonical_phrasing_.end())
             ? phrasing_it->second : intent;
-        pred.rationale = use_lstm
-            ? "bigram+temporal+trigram+lstm ensemble"
-            : "bigram+temporal+trigram ensemble";
+        // Build rationale string reflecting active levels
+        std::string rationale = "bigram+temporal+trigram";
+        if (use_lstm) rationale += "+lstm";
+        if (use_mamba) rationale += "+mamba2";
+        rationale += " ensemble";
+        pred.rationale = std::move(rationale);
         results.push_back(std::move(pred));
     }
     return results;
@@ -801,6 +1623,17 @@ void IntentPredictor::save() const {
     }
     if (!lstm_path.empty() && lstm_) {
         lstm_->save(lstm_path);
+    }
+
+    // Save Mamba-2 weights to binary file
+    std::string mamba_path = config_.mamba_weights_path;
+    if (mamba_path.empty()) {
+        if (const char* home = std::getenv("HOME")) {
+            mamba_path = std::string(home) + "/.sparx/speculation/mamba.bin";
+        }
+    }
+    if (!mamba_path.empty() && mamba_) {
+        mamba_->save(mamba_path);
     }
 }
 
@@ -889,7 +1722,7 @@ void IntentPredictor::load() {
 }
 
 // ---------------------------------------------------------------------------
-// EmbeddingIndex (SimHash over character trigrams)
+// EmbeddingIndex (SimHash over character trigrams + HNSW graph for ANN)
 // ---------------------------------------------------------------------------
 
 std::string EmbeddingIndex::normalizeForEmbedding(const std::string& text) {
@@ -973,41 +1806,336 @@ float EmbeddingIndex::cosineSimilarity(const EmbeddingVec& a, const EmbeddingVec
     return dot;
 }
 
-void EmbeddingIndex::insert(const std::string& cache_key, const EmbeddingVec& vec) {
-    // Replace if exists
-    for (auto& entry : entries_) {
-        if (entry.cache_key == cache_key) {
-            entry.vec = vec;
-            return;
+int EmbeddingIndex::randomLevel() const {
+    // Geometric distribution with P = 1/ln(M)
+    // Each level has probability (1/M) of being exceeded
+    static thread_local std::mt19937 rng(
+        static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    double r = dist(rng);
+    double mL = hnsw_params_.levelMultiplier();
+    int level = static_cast<int>(-std::log(r) * mL);
+    // Cap at a reasonable maximum (prevents degenerate tall graphs)
+    return std::min(level, 16);
+}
+
+std::vector<std::pair<size_t, float>> EmbeddingIndex::searchLayer(
+    const EmbeddingVec& query, size_t entry_id, size_t ef, int layer) const {
+
+    // Priority queue based greedy search on a single HNSW layer
+    // visited set to avoid revisiting
+    std::vector<bool> visited(nodes_.size(), false);
+    visited[entry_id] = true;
+
+    float entry_sim = cosineSimilarity(query, nodes_[entry_id].vec);
+
+    // candidates: max-heap by similarity (best candidates first for expansion)
+    // Use negative similarity for min-heap behavior with std::greater
+    using ScoredNode = std::pair<float, size_t>;  // (similarity, node_idx)
+
+    // W = result set (sorted ascending by similarity, worst first for eviction)
+    std::vector<std::pair<size_t, float>> W;
+    W.push_back({entry_id, entry_sim});
+
+    // C = candidate set (nodes to expand from)
+    // We use a vector and process greedily
+    std::vector<std::pair<float, size_t>> candidates;
+    candidates.push_back({entry_sim, entry_id});
+
+    while (!candidates.empty()) {
+        // Pick the best unexpanded candidate
+        auto best_it = std::max_element(candidates.begin(), candidates.end(),
+            [](const ScoredNode& a, const ScoredNode& b) { return a.first < b.first; });
+        auto [c_sim, c_idx] = *best_it;
+        candidates.erase(best_it);
+
+        // Find worst element in W
+        float worst_sim = W.empty() ? -1.0f :
+            std::min_element(W.begin(), W.end(),
+                [](const auto& a, const auto& b) { return a.second < b.second; })->second;
+
+        // If the best candidate is worse than the worst result and we have enough, stop
+        if (c_sim < worst_sim && W.size() >= ef) break;
+
+        // Expand neighbors of c on this layer
+        if (layer < static_cast<int>(nodes_[c_idx].neighbors.size())) {
+            for (size_t neighbor_idx : nodes_[c_idx].neighbors[layer]) {
+                if (neighbor_idx >= nodes_.size()) continue;
+                if (visited[neighbor_idx]) continue;
+                visited[neighbor_idx] = true;
+
+                float n_sim = cosineSimilarity(query, nodes_[neighbor_idx].vec);
+
+                // Add to W if better than worst or W not full
+                worst_sim = W.empty() ? -1.0f :
+                    std::min_element(W.begin(), W.end(),
+                        [](const auto& a, const auto& b) { return a.second < b.second; })->second;
+
+                if (W.size() < ef || n_sim > worst_sim) {
+                    candidates.push_back({n_sim, neighbor_idx});
+                    W.push_back({neighbor_idx, n_sim});
+
+                    // Trim W to ef elements (keep best)
+                    if (W.size() > ef) {
+                        auto worst = std::min_element(W.begin(), W.end(),
+                            [](const auto& a, const auto& b) { return a.second < b.second; });
+                        W.erase(worst);
+                    }
+                }
+            }
         }
     }
-    entries_.push_back({cache_key, vec});
+
+    // Sort by similarity descending
+    std::sort(W.begin(), W.end(),
+        [](const auto& a, const auto& b) { return a.second > b.second; });
+    return W;
+}
+
+std::vector<size_t> EmbeddingIndex::selectNeighborsHeuristic(
+    const EmbeddingVec& query,
+    const std::vector<std::pair<size_t, float>>& candidates,
+    size_t M) const {
+
+    // Algorithm 4 from the HNSW paper: heuristic neighbor selection
+    // Ensures diversity — avoids clustering all neighbors in one direction
+    // Note: query is used implicitly — candidate similarities are relative to it
+    (void)query;
+    if (candidates.empty()) return {};
+    if (candidates.size() <= M) {
+        std::vector<size_t> result;
+        result.reserve(candidates.size());
+        for (const auto& [idx, _] : candidates) result.push_back(idx);
+        return result;
+    }
+
+    // Working set sorted by similarity (descending)
+    auto working = candidates;
+    std::sort(working.begin(), working.end(),
+        [](const auto& a, const auto& b) { return a.second > b.second; });
+
+    std::vector<size_t> selected;
+    selected.reserve(M);
+
+    for (const auto& [cand_idx, cand_sim] : working) {
+        if (selected.size() >= M) break;
+
+        // Heuristic pruning: only add if this candidate is closer to query
+        // than to any already-selected neighbor (ensures spatial diversity)
+        bool good = true;
+        for (size_t sel_idx : selected) {
+            float inter_sim = cosineSimilarity(nodes_[cand_idx].vec, nodes_[sel_idx].vec);
+            if (inter_sim > cand_sim) {
+                // This candidate is closer to an existing neighbor than to the query
+                // Prune it to maintain diversity
+                good = false;
+                break;
+            }
+        }
+        if (good) {
+            selected.push_back(cand_idx);
+        }
+    }
+
+    // If heuristic was too aggressive, fill with remaining closest candidates
+    if (selected.size() < M) {
+        for (const auto& [cand_idx, _] : working) {
+            if (selected.size() >= M) break;
+            if (std::find(selected.begin(), selected.end(), cand_idx) == selected.end()) {
+                selected.push_back(cand_idx);
+            }
+        }
+    }
+
+    return selected;
+}
+
+void EmbeddingIndex::insert(const std::string& cache_key, const EmbeddingVec& vec) {
+    // Check if this key already exists — update in place
+    auto existing = key_to_index_.find(cache_key);
+    if (existing != key_to_index_.end()) {
+        size_t idx = existing->second;
+        nodes_[idx].vec = vec;
+        // Note: we don't rebuild connections on update (trade-off for speed)
+        return;
+    }
+
+    // Assign random level for new node
+    int node_level = randomLevel();
+    size_t new_idx = nodes_.size();
+
+    HnswNode node;
+    node.cache_key = cache_key;
+    node.vec = vec;
+    node.level = node_level;
+    node.neighbors.resize(node_level + 1);
+    nodes_.push_back(std::move(node));
+    key_to_index_[cache_key] = new_idx;
+
+    // First node — becomes entry point
+    if (nodes_.size() == 1) {
+        max_level_ = node_level;
+        entry_point_ = 0;
+        return;
+    }
+
+    // Greedy descent from entry point through layers above the new node's level
+    size_t ep = entry_point_;
+    for (int layer = max_level_; layer > node_level; --layer) {
+        auto results = searchLayer(vec, ep, 1, layer);
+        if (!results.empty()) {
+            ep = results[0].first;
+        }
+    }
+
+    // Insert into each layer [0, node_level]
+    for (int layer = std::min(node_level, max_level_); layer >= 0; --layer) {
+        size_t ef = hnsw_params_.efConstruction;
+        auto candidates = searchLayer(vec, ep, ef, layer);
+
+        // Select M best neighbors using heuristic
+        size_t M = hnsw_params_.M;
+        // Layer 0 can have 2*M connections (as per HNSW paper)
+        size_t maxM = (layer == 0) ? 2 * M : M;
+        auto neighbors = selectNeighborsHeuristic(vec, candidates, maxM);
+
+        // Set forward connections from new node
+        nodes_[new_idx].neighbors[layer] = neighbors;
+
+        // Set backward connections (add new node as neighbor to selected nodes)
+        for (size_t neighbor_idx : neighbors) {
+            auto& nb_neighbors = nodes_[neighbor_idx].neighbors[layer];
+            nb_neighbors.push_back(new_idx);
+
+            // If neighbor has too many connections, prune
+            if (nb_neighbors.size() > maxM) {
+                // Rebuild neighbor list with heuristic selection
+                std::vector<std::pair<size_t, float>> nb_candidates;
+                nb_candidates.reserve(nb_neighbors.size());
+                for (size_t n : nb_neighbors) {
+                    float sim = cosineSimilarity(nodes_[neighbor_idx].vec, nodes_[n].vec);
+                    nb_candidates.push_back({n, sim});
+                }
+                nb_neighbors = selectNeighborsHeuristic(
+                    nodes_[neighbor_idx].vec, nb_candidates, maxM);
+            }
+        }
+
+        // Use closest result as entry point for next layer down
+        if (!candidates.empty()) {
+            ep = candidates[0].first;
+        }
+    }
+
+    // Update entry point if new node has higher level
+    if (node_level > max_level_) {
+        max_level_ = node_level;
+        entry_point_ = new_idx;
+    }
 }
 
 std::optional<EmbeddingIndex::NearestResult> EmbeddingIndex::findNearest(
     const EmbeddingVec& query, float threshold) const {
 
-    NearestResult best;
-    for (const auto& entry : entries_) {
-        float sim = cosineSimilarity(query, entry.vec);
-        if (sim > best.similarity) {
-            best.cache_key = entry.cache_key;
-            best.similarity = sim;
+    if (nodes_.empty()) return std::nullopt;
+
+    // HNSW search: greedy descent from top layer, then ef-search on layer 0
+    size_t ep = entry_point_;
+
+    // Traverse from top layer down to layer 1 with ef=1 (greedy)
+    for (int layer = max_level_; layer >= 1; --layer) {
+        auto results = searchLayer(query, ep, 1, layer);
+        if (!results.empty()) {
+            ep = results[0].first;
         }
     }
-    if (best.similarity >= threshold) return best;
+
+    // Search layer 0 with full efSearch
+    auto results = searchLayer(query, ep, hnsw_params_.efSearch, 0);
+
+    if (results.empty()) return std::nullopt;
+
+    // Best result is first (sorted descending by similarity)
+    const auto& [best_idx, best_sim] = results[0];
+    if (best_sim >= threshold) {
+        NearestResult nr;
+        nr.cache_key = nodes_[best_idx].cache_key;
+        nr.similarity = best_sim;
+        return nr;
+    }
     return std::nullopt;
 }
 
 void EmbeddingIndex::remove(const std::string& cache_key) {
-    entries_.erase(
-        std::remove_if(entries_.begin(), entries_.end(),
-            [&](const IndexEntry& e) { return e.cache_key == cache_key; }),
-        entries_.end());
+    auto it = key_to_index_.find(cache_key);
+    if (it == key_to_index_.end()) return;
+
+    size_t remove_idx = it->second;
+
+    // Remove all connections TO this node from its neighbors
+    for (int layer = 0; layer <= nodes_[remove_idx].level; ++layer) {
+        if (layer >= static_cast<int>(nodes_[remove_idx].neighbors.size())) break;
+        for (size_t neighbor_idx : nodes_[remove_idx].neighbors[layer]) {
+            if (neighbor_idx >= nodes_.size()) continue;
+            if (layer >= static_cast<int>(nodes_[neighbor_idx].neighbors.size())) continue;
+            auto& nb_list = nodes_[neighbor_idx].neighbors[layer];
+            nb_list.erase(
+                std::remove(nb_list.begin(), nb_list.end(), remove_idx),
+                nb_list.end());
+        }
+    }
+
+    // Swap-remove: move last node into this slot
+    size_t last_idx = nodes_.size() - 1;
+    if (remove_idx != last_idx) {
+        // Update all references from last_idx to remove_idx in neighbors
+        for (int layer = 0; layer <= nodes_[last_idx].level; ++layer) {
+            if (layer >= static_cast<int>(nodes_[last_idx].neighbors.size())) break;
+            for (size_t neighbor_idx : nodes_[last_idx].neighbors[layer]) {
+                if (neighbor_idx >= nodes_.size()) continue;
+                if (layer >= static_cast<int>(nodes_[neighbor_idx].neighbors.size())) continue;
+                auto& nb_list = nodes_[neighbor_idx].neighbors[layer];
+                for (auto& n : nb_list) {
+                    if (n == last_idx) n = remove_idx;
+                }
+            }
+        }
+
+        // Move node data
+        nodes_[remove_idx] = std::move(nodes_[last_idx]);
+        key_to_index_[nodes_[remove_idx].cache_key] = remove_idx;
+
+        // Fix entry point if it was the last node
+        if (entry_point_ == last_idx) {
+            entry_point_ = remove_idx;
+        }
+    }
+
+    nodes_.pop_back();
+    key_to_index_.erase(it);
+
+    // If we removed the entry point or graph is empty, reset
+    if (nodes_.empty()) {
+        max_level_ = -1;
+        entry_point_ = 0;
+    } else if (entry_point_ >= nodes_.size()) {
+        // Find new entry point (node with highest level)
+        entry_point_ = 0;
+        max_level_ = nodes_[0].level;
+        for (size_t i = 1; i < nodes_.size(); ++i) {
+            if (nodes_[i].level > max_level_) {
+                max_level_ = nodes_[i].level;
+                entry_point_ = i;
+            }
+        }
+    }
 }
 
 void EmbeddingIndex::clear() {
-    entries_.clear();
+    nodes_.clear();
+    key_to_index_.clear();
+    max_level_ = -1;
+    entry_point_ = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1273,6 +2401,18 @@ void SpeculativeExecutor::executeTask(const SpeculationTask& task) {
     cached.model_id = "local";
     cached.token_count = static_cast<uint32_t>(result->size() / 4);
     cache_.put(std::move(cached));
+
+    // NPU dispatch: pre-warm KV cache when confidence exceeds threshold
+    if (config_.npu_dispatch_fn && task.confidence > config_.npu_dispatch_threshold) {
+        bool accepted = config_.npu_dispatch_fn(
+            task.predicted_input, *result, task.confidence);
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (accepted) {
+            metrics_.npu_dispatches++;
+        } else {
+            metrics_.npu_dispatch_failures++;
+        }
+    }
 }
 
 bool SpeculativeExecutor::isSystemIdle() const {
@@ -1371,6 +2511,11 @@ void SpeculativeExecutor::preempt() {
         metrics_.preempted += static_cast<uint64_t>(task_queue_.size());
         task_queue_.clear();
     }
+}
+
+void SpeculativeExecutor::setNpuDispatchFn(NpuDispatchFn fn) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    config_.npu_dispatch_fn = std::move(fn);
 }
 
 SpeculationMetrics SpeculativeExecutor::metrics() const {

@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0D0D0D">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📷 Multi-Source Sensing"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/text_vlm_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="VLM: --"
+            android:textColor="#00E676"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Camera Grid: 3 feeds in a row, each 16:9 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:gravity="center">
+
+        <!-- Feed 1: Back Camera -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginEnd="4dp">
+
+            <FrameLayout
+                android:id="@+id/frame_back_camera"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:background="#1A1A1A">
+
+                <TextureView
+                    android:id="@+id/camera_preview"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:text=" ● LIVE"
+                    android:textColor="#00E676"
+                    android:textSize="9sp"
+                    android:background="#88000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Back Camera"
+                android:textColor="#AAAAAA"
+                android:textSize="10sp"
+                android:gravity="center"
+                android:paddingTop="4dp" />
+        </LinearLayout>
+
+        <!-- Feed 2: Front Camera -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp">
+
+            <FrameLayout
+                android:id="@+id/frame_front_camera"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:background="#1A1A1A">
+
+                <TextureView
+                    android:id="@+id/camera_preview_front"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:text=" ● LIVE"
+                    android:textColor="#00E676"
+                    android:textSize="9sp"
+                    android:background="#88000000"
+                    android:padding="2dp" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Front Camera"
+                android:textColor="#AAAAAA"
+                android:textSize="10sp"
+                android:gravity="center"
+                android:paddingTop="4dp" />
+        </LinearLayout>
+
+        <!-- Feed 3: External/Placeholder -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="4dp">
+
+            <FrameLayout
+                android:id="@+id/frame_external"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:background="#1A1A1A">
+
+                <TextView
+                    android:id="@+id/text_external_placeholder"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="+ Add Feed\n\nIP Camera\nUSB\nRTSP"
+                    android:textColor="#444444"
+                    android:textSize="10sp" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="External"
+                android:textColor="#666666"
+                android:textSize="10sp"
+                android:gravity="center"
+                android:paddingTop="4dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Separator -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#2A2A2A"
+        android:layout_marginTop="10dp" />
+
+    <!-- Analysis Panel (scrollable) -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- Mode indicator -->
+            <TextView
+                android:id="@+id/text_mode_indicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚙️ Agent Fusion Analysis"
+                android:textColor="#00E676"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Scan indicator (pipeline status) -->
+            <TextView
+                android:id="@+id/text_scan_indicator"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#888888"
+                android:textSize="11sp"
+                android:layout_marginBottom="4dp" />
+
+            <!-- VLM banner (hidden when loaded) -->
+            <TextView
+                android:id="@+id/text_vlm_banner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:text="⚠️ 视觉模型未完整加载 — 下载 mmproj 文件"
+                android:textColor="#FFD600"
+                android:textSize="11sp"
+                android:background="#1A1A00"
+                android:padding="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Analysis result (streaming output) -->
+            <TextView
+                android:id="@+id/text_analysis_result"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="点击「Analyze」融合多路视频源进行情境分析"
+                android:textColor="#E0E0E0"
+                android:textSize="13sp"
+                android:lineSpacingExtra="4dp" />
+
+            <!-- Input field (for text-assisted mode) -->
+            <EditText
+                android:id="@+id/input_context"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:visibility="gone"
+                android:hint="描述场景..."
+                android:textColorHint="#555555"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:background="#2A2A2A"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:singleLine="true"
+                android:layout_marginTop="8dp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Bottom bar: perf + button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:background="#141414">
+
+        <TextView
+            android:id="@+id/text_perf_info"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text=""
+            android:textColor="#666666"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btn_analyze"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Analyze"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:textSize="13sp"
+            android:backgroundTint="#00E676" />
+    </LinearLayout>
+
+</LinearLayout>

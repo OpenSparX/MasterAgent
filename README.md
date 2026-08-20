@@ -12,10 +12,12 @@ Build agents that run 100% on-device. No cloud. No latency. No data leaks.
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/OpenSparX/MasterAgent/workflows/CI/badge.svg)](https://github.com/OpenSparX/MasterAgent/actions)
 [![Platform](https://img.shields.io/badge/platform-CPU%20%7C%20Qualcomm%20NPU-green.svg)](#-supported-hardware)
-[![Version](https://img.shields.io/badge/version-2.1.18-orange.svg)](https://github.com/OpenSparX/MasterAgent/releases)
+
+> ⚠️ **Status: Alpha** — Core kernel is functional. APIs are unstable. Contributions welcome.
 
 ```bash
-npm install -g @sparx/cli && sparx demo automotive
+git clone https://github.com/OpenSparX/MasterAgent.git && cd MasterAgent
+cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j$(nproc)
 ```
 
 [Quick Start](#-quick-start) · [Why OAK?](#-why-oak) · [Docs](#-documentation) · [中文文档](#中文)
@@ -27,23 +29,27 @@ npm install -g @sparx/cli && sparx demo automotive
 ## ⚡ 30-Second Demo
 
 ```bash
-$ sparx demo automotive
+$ cmake -B build && cmake --build build -j$(nproc) && ctest --test-dir build
 
-🚗 Automotive Voice Assistant
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[100%] Built target bench_strategic
+Test project /home/you/MasterAgent/build
+    Start 1: test_integration_speculation
+1/5 Test #1: test_integration_speculation .....   Passed    0.8 sec
+    Start 2: test_orset
+2/5 Test #2: test_orset .......................   Passed    0.4 sec
+    Start 3: test_merkle
+3/5 Test #3: test_merkle ......................   Passed    0.4 sec
+    Start 4: test_embedding
+4/5 Test #4: test_embedding ...................   Passed    0.4 sec
+    Start 5: bench_strategic
+5/5 Test #5: bench_strategic ..................   Passed    2.9 sec
 
-You: "Turn on AC, set to 22°C, interior mode"
-
-⚙️  Processing...
-├─ Intent: climate_control              ✓  0.02ms (deterministic)
-├─ Skills: ac.power, ac.temp, ac.mode   ✓
-├─ MCP: vehicle.climate                 ✓  87ms
-└─ Result: Climate control updated      ✓
-
-⚡ Total: 87ms | Route: deterministic | Model: not invoked
+100% tests passed, 0 tests failed out of 5
 ```
 
-No model was loaded. No GPU required. Pattern matching handled it in **0.02ms**.
+The OSS build compiles and tests the strategic features: speculative execution,
+CRDT mesh sync, formal verification, and embedding search. The full CLI
+(with model inference) requires the kernel runtime — see [Architecture](#-architecture).
 
 ---
 
@@ -90,44 +96,62 @@ Develop on CPU anywhere. Deploy to Qualcomm NPU for **14× speedup** at **3.5× 
 
 ## 🚀 Quick Start
 
-### Install
+### Build from Source
 
 ```bash
-# npm (recommended)
-npm install -g @sparx/cli
+# Prerequisites: CMake 3.18+, C++17 compiler (GCC 9+, Clang 11+)
+git clone https://github.com/OpenSparX/MasterAgent.git
+cd MasterAgent
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+      -DMASTER_AGENT_BUILD_CLI=ON \
+      -DMASTER_AGENT_BUILD_TESTS=ON
+cmake --build build -j$(nproc)
 
-# Homebrew (macOS)
-brew install OpenSparX/masteragent/sparx
-
-# curl (macOS / Linux)
-curl -fsSL https://raw.githubusercontent.com/OpenSparX/MasterAgent/main/scripts/install.sh | sh
+# Run tests
+ctest --test-dir build --output-on-failure
 ```
 
-### Your First Agent in 60 Seconds
+### Run with a Local Model (llama.cpp)
 
 ```bash
-# Initialize
-sparx init my-agent && cd my-agent
+# The sparx CLI connects to any llama-server compatible endpoint.
+# Start llama-server (install separately: https://github.com/ggml-org/llama.cpp)
+llama-server -m your-model.gguf --port 8080
 
-# Download a small model (530 MB)
-sparx pull qwen2.5-0.5b-instruct
-
-# Run
-sparx run
+# Run the CLI
+./build/cli/sparx run --endpoint 127.0.0.1:8080
 ```
 
-That's it. Type a message:
+### Run in Deterministic-Only Mode (No Model Needed)
 
-```
-> hello
-✓ route=deterministic  skill=hello  0.02ms
-
-> what's the weather like?
-✓ route=inference  ttft=142ms  total=1830ms  tokens=28
-  I don't have access to real-time weather data...
+```bash
+# Deterministic skills respond without any model loaded
+./build/cli/sparx demo automotive
 ```
 
-> **💡** `sparx run` works without a model — deterministic skills still respond. Only open-ended questions need one.
+> **💡** Most intent routing works without a model — only open-ended queries need LLM inference.
+
+---
+
+## 📦 What's Open Source
+
+OAK uses an **open-core** model. This repository contains:
+
+| Component | Status | LOC |
+|:---|:---:|---:|
+| Speculative Execution (LSTM + HNSW) | ✅ Full source | 2,565 |
+| Formal Plan Verification (CDCL SAT) | ✅ Full source | 3,656 |
+| Agent Mesh (mDNS + CRDT + Merkle) | ✅ Full source | 4,875 |
+| On-Device Learning (DP-SGD) | ✅ Full source | 1,800+ |
+| Constrained Decoding (GBNF) | ✅ Full source | 1,200+ |
+| llama.cpp Model Runtime | ✅ Full source | 527 |
+| Agent Scheduler | ✅ Full source | 600+ |
+| Kernel Interfaces (headers) | ✅ Public API | — |
+| Kernel Runtime (orchestrator, WAL, dispatch) | ❌ Proprietary | — |
+
+The proprietary kernel runtime handles task orchestration, WAL recovery, and agent dispatch. The strategic feature modules (the algorithmic innovations) are fully open and independently testable.
+
+We're working toward open-sourcing the kernel runtime. Track progress in [#1](https://github.com/OpenSparX/MasterAgent/issues/1).
 
 ---
 
@@ -649,12 +673,10 @@ Agent 崩溃时不盲目重试（重复扣费），不静默忽略（钱丢了�
 
 | 版本 | 时间 | 关键特性 |
 |:---|:---|:---|
-| ~~v2.0~~ | ~~2025~~ | ✅ 内核、WAL、MCP、NPU |
-| ~~v2.1~~ | ~~2026.8~~ | ✅ 投机执行、验证、Mesh、学习 |
-| **v3.0** | 2026 Q4 | 神经预测器、CEGAR、BLE Mesh |
-| **v3.1** | 2027 Q1 | 意图感知投机、因果广播 |
-| **v3.2** | 2027 Q2 | mTLS Mesh、自适应 Merkle |
-| **v3.3** | 2027 Q3 | WAN 中继、联邦学习 |
+| **v0.3** | 2026.8 | ✅ 内核、WAL、Agent 调度、llama.cpp 集成 |
+| **v0.4** | 2026 Q4 | 投机执行稳定化、端到端验证覆盖 |
+| **v0.5** | 2027 Q1 | Agent Mesh (mDNS + CRDT)、NPU 加速 |
+| **v1.0** | 2027 Q2 | API 稳定、npm CLI 发布、完整文档 |
 
 详见 [docs/ROADMAP_v3.md](docs/ROADMAP_v3.md)
 
@@ -695,7 +717,8 @@ Apache 2.0 — 见 [LICENSE](LICENSE)
 **立即开始 ↓**
 
 ```bash
-npm install -g @sparx/cli && sparx init my-agent
+git clone https://github.com/OpenSparX/MasterAgent.git && cd MasterAgent
+cmake -B build && cmake --build build -j$(nproc)
 ```
 
 </div>

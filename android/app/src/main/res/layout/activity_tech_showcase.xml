@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#0D0D0D">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OpenSparX Technology"
+            android:textSize="28sp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:layout_marginTop="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="On-Device Agent OS"
+            android:textSize="14sp"
+            android:textColor="#80FFFFFF"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Card 1: Speculative Agent Execution -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_tech_card"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <!-- Title row with pulse indicator -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚡"
+                    android:textSize="24sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Speculative Agent Execution"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:layout_marginStart="12dp" />
+
+                <View
+                    android:id="@+id/pulse_indicator"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_pulse_dot" />
+            </LinearLayout>
+
+            <!-- Metrics Grid -->
+            <GridLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="2"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="Hit Rate" android:textSize="11sp" android:textColor="#80FFFFFF" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="Cold Start" android:textSize="11sp" android:textColor="#80FFFFFF" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="33.3%" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="~22 interactions" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp" android:layout_marginTop="8dp"
+                    android:text="Latency Savings" android:textSize="11sp" android:textColor="#80FFFFFF" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp" android:layout_marginTop="8dp"
+                    android:text="Memory" android:textSize="11sp" android:textColor="#80FFFFFF" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="66.4ms/turn" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="&lt;1KB" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+            </GridLayout>
+
+            <!-- Description -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Predictive pre-computation on idle NPU. Pre-computes likely next requests during idle time for instant response."
+                android:textSize="12sp"
+                android:textColor="#99FFFFFF"
+                android:lineSpacingExtra="2dp" />
+        </LinearLayout>
+
+        <!-- Card 2: Agent Mesh Protocol -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_tech_card"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌐"
+                    android:textSize="24sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Agent Mesh Protocol"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:layout_marginStart="12dp" />
+            </LinearLayout>
+
+            <GridLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="2"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="Convergence" android:textSize="11sp" android:textColor="#80FFFFFF" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="Bandwidth Savings" android:textSize="11sp" android:textColor="#80FFFFFF" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="1-2 rounds" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="85%" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp" android:layout_marginTop="8dp"
+                    android:text="Data Loss" android:textSize="11sp" android:textColor="#80FFFFFF" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp" android:layout_marginTop="8dp"
+                    android:text="Peers" android:textSize="11sp" android:textColor="#80FFFFFF" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="0%" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="up to 8" android:textSize="18sp" android:textColor="#00FF88" android:textStyle="bold" />
+            </GridLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Zero-config multi-device collaboration via CRDT sync and Merkle anti-entropy."
+                android:textSize="12sp"
+                android:textColor="#99FFFFFF"
+                android:lineSpacingExtra="2dp" />
+        </LinearLayout>
+
+        <!-- Card 3: Formal Plan Verification -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_tech_card"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔒"
+                    android:textSize="24sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Formal Plan Verification"
+                    android:textSize="16sp"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:layout_marginStart="12dp" />
+            </LinearLayout>
+
+            <GridLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="2"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="12dp">
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="Logic" android:textSize="11sp" android:textColor="#80FFFFFF" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="Speed" android:textSize="11sp" android:textColor="#80FFFFFF" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="CTL* (AG/AF/AX/AU)" android:textSize="16sp" android:textColor="#00FF88" android:textStyle="bold" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="&lt;10ms / 50 nodes" android:textSize="16sp" android:textColor="#00FF88" android:textStyle="bold" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp" android:layout_marginTop="8dp"
+                    android:text="Methods" android:textSize="11sp" android:textColor="#80FFFFFF" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp" android:layout_marginTop="8dp"
+                    android:text="Safety" android:textSize="11sp" android:textColor="#80FFFFFF" />
+
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="BMC + POR + CEGAR" android:textSize="16sp" android:textColor="#00FF88" android:textStyle="bold" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_columnWeight="1" android:layout_margin="4dp"
+                    android:text="AG(¬bad_state) ✓" android:textSize="16sp" android:textColor="#00FF88" android:textStyle="bold" />
+            </GridLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Every agent plan is formally verified before execution. Temporal logic ensures safety properties."
+                android:textSize="12sp"
+                android:textColor="#99FFFFFF"
+                android:lineSpacingExtra="2dp" />
+        </LinearLayout>
+
+        <!-- Footer -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Based on 2025–2026 research  •  3 papers  •  12 eval benchmarks"
+            android:textSize="11sp"
+            android:textColor="#55FFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="32dp" />
+
+    </LinearLayout>
+</ScrollView>

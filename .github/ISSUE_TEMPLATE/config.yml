@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/OpenSparX/MasterAgent/discussions
+    about: Ask questions and share ideas
+  - name: 📖 Documentation
+    url: https://github.com/OpenSparX/MasterAgent/tree/main/docs
+    about: Read the docs before filing a bug

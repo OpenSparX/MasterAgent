@@ -1,6 +1,5 @@
 package com.opensparx.agent.ui
 
-import android.animation.ValueAnimator
 import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
@@ -9,6 +8,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
@@ -19,6 +19,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.opensparx.agent.AgentApplication
 import com.opensparx.agent.R
+import com.opensparx.agent.core.AgentPipeline
+import com.opensparx.agent.core.AgentPipeline.PipelineEvent
+import com.opensparx.agent.ui.PipelineVisualizer
 import kotlinx.coroutines.*
 
 /**
@@ -48,12 +51,18 @@ class ChatBubbleService : Service() {
     private val app by lazy { AgentApplication.get() }
 
     private var generationJob: Job? = null
+    private val conversationHistory = mutableListOf<Pair<String, String>>()
+
+    private lateinit var pipeline: AgentPipeline
+    private lateinit var visualizer: PipelineVisualizer
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        pipeline = AgentPipeline(this)
+        visualizer = PipelineVisualizer(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -153,49 +162,106 @@ class ChatBubbleService : Service() {
         addUserMessage(messagesContainer, text)
         scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
 
-        // Cancel any existing generation
-        generationJob?.cancel()
-        app.backend.cancelGeneration()
+        // Check if model is loaded
+        if (!app.genieX.isModelLoaded()) {
+            addSystemMessage(messagesContainer, "⚠️ 模型未加载 — 请先下载模型")
+            return
+        }
 
-        // Start streaming response
-        val responseView = addAssistantMessage(messagesContainer, "")
+        // Slash commands bypass the pipeline and use direct inference
+        if (text.startsWith("/")) {
+            generationJob?.cancel()
+            val responseView = addAssistantMessage(messagesContainer, "")
+            scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+            speedLabel.text = "generating..."
+
+            val startTime = System.currentTimeMillis()
+            var tokenCount = 0
+
+            generationJob = serviceScope.launch {
+                try {
+                    pipeline.execute(text).collect { event ->
+                        when (event) {
+                            is PipelineEvent.Token -> {
+                                tokenCount++
+                                withContext(Dispatchers.Main) {
+                                    responseView.append(event.text)
+                                    scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+                                }
+                            }
+                            is PipelineEvent.PipelineComplete -> {
+                                val elapsed = System.currentTimeMillis() - startTime
+                                val speed = if (elapsed > 0) tokenCount * 1000f / elapsed else 0f
+                                withContext(Dispatchers.Main) {
+                                    speedLabel.text = String.format("%.1f tok/s", speed)
+                                }
+                            }
+                            else -> {}
+                        }
+                    }
+                } catch (_: CancellationException) {
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        responseView.append("\n⚠️ ${e.message}")
+                        speedLabel.text = "error"
+                    }
+                }
+            }
+            return
+        }
+
+        // ─── Run Agent Pipeline with visualization ─────────────────────
+        generationJob?.cancel()
+
+        // Create pipeline overlay view
+        val pipelineView = LayoutInflater.from(this).inflate(R.layout.pipeline_overlay, null)
+        messagesContainer.addView(pipelineView)
         scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+
+        speedLabel.text = "pipeline..."
+        visualizer.reset()
+
+        val startTime = System.currentTimeMillis()
+        var tokenCount = 0
 
         generationJob = serviceScope.launch {
             try {
-                val result = app.backend.generate(
-                    prompt = buildPrompt(text),
-                    onToken = { token ->
-                        launch(Dispatchers.Main) {
-                            responseView.append(token)
-                            scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+                pipeline.execute(text).collect { event ->
+                    withContext(Dispatchers.Main) {
+                        // Render pipeline visualization
+                        visualizer.renderEvent(pipelineView as ViewGroup, event)
+                        scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+
+                        // Handle streaming tokens — append to assistant message
+                        when (event) {
+                            is PipelineEvent.Token -> {
+                                tokenCount++
+                                // Find or create response TextView
+                                val responseView = pipelineView.findViewWithTag<TextView>("response")
+                                    ?: TextView(this@ChatBubbleService).apply {
+                                        tag = "response"
+                                        setTextColor(0xFFE0E0E0.toInt())
+                                        textSize = 14f
+                                        setPadding(0, 16, 0, 0)
+                                        (pipelineView as? ViewGroup)?.addView(this)
+                                    }
+                                responseView.append(event.text)
+                            }
+                            is PipelineEvent.PipelineComplete -> {
+                                val elapsed = System.currentTimeMillis() - startTime
+                                speedLabel.text = "${event.stagesCompleted} stages | ${elapsed}ms"
+                            }
+                            else -> {}
                         }
                     }
-                )
-                withContext(Dispatchers.Main) {
-                    speedLabel.text = String.format("%.1f tok/s", result.tokensPerSecond)
                 }
-            } catch (e: CancellationException) {
-                // Normal cancellation
+            } catch (_: CancellationException) {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    responseView.text = "Error: ${e.message}"
+                    addSystemMessage(messagesContainer, "⚠️ Pipeline error: ${e.message}")
                 }
             }
         }
-    }
-
-    private fun buildPrompt(userMessage: String): String {
-        // Simple chat template — will be expanded with conversation history
-        return """<|im_start|>system
-You are SparX, a helpful on-device AI assistant running on the user's phone.
-Be concise — you're in a floating chat bubble. Keep responses under 3 sentences unless asked for more.
-<|im_end|>
-<|im_start|>user
-$userMessage
-<|im_end|>
-<|im_start|>assistant
-"""
     }
 
     private fun addUserMessage(container: LinearLayout, text: String) {
@@ -268,6 +334,7 @@ $userMessage
 
     private fun dismiss() {
         generationJob?.cancel()
+        conversationHistory.clear()
         bubbleView?.let { view ->
             view.animate()
                 .alpha(0f)
@@ -281,4 +348,5 @@ $userMessage
         }
         stopSelf()
     }
+
 }

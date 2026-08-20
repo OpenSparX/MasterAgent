@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+build-ci/
 /tmp/
 
 # IDE
@@ -35,4 +36,23 @@ Testing/
 genai_lib/
 utilities/
 qnn_model_prepare_*.py
-build-ci/
+
+# Android
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/app/.cxx/
+android/build/
+android/local.properties
+*.apk
+*.aab
+
+# Python
+__pycache__/
+*.pyc
+.demo-venv/
+*.egg-info/
+dist/
+
+# Claude
+.claude/

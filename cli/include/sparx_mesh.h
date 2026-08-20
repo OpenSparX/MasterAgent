@@ -29,6 +29,7 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -1067,6 +1068,888 @@ private:
     std::unique_ptr<CapabilityRouter> router_;
     std::unique_ptr<CrdtStateSync> state_sync_;
     bool active_ = false;
+};
+
+// ===========================================================================
+// QUIC-like Network Transport Layer
+// ===========================================================================
+
+/// Packet types for the QUIC-like transport protocol.
+enum class QTransportPacketType : std::uint8_t {
+    SYN         = 0x01,  // Connection initiation
+    SYN_ACK     = 0x02,  // Connection acknowledgement
+    ACK         = 0x03,  // Final handshake / data ack
+    DATA        = 0x04,  // Payload-bearing packet
+    FIN         = 0x05,  // Graceful close
+    RST         = 0x06,  // Connection reset
+    PING        = 0x07,  // Keepalive
+    PONG        = 0x08,  // Keepalive response
+    ZERO_RTT    = 0x09,  // 0-RTT early data
+};
+
+/// Connection states for the transport layer.
+enum class QTransportState : std::uint8_t {
+    Closed       = 0,
+    SynSent      = 1,
+    SynReceived  = 2,
+    Established  = 3,
+    Closing      = 4,
+};
+
+/// Wire format packet header.
+/// Layout: [magic:4][version:1][type:1][stream_id:2][seq:4][ack:4][payload_len:2][payload:N]
+struct QTransportPacket {
+    static constexpr std::uint32_t MAGIC = 0x51545250;  // "QTRP"
+    static constexpr std::uint8_t VERSION = 1;
+
+    QTransportPacketType type = QTransportPacketType::DATA;
+    std::uint16_t stream_id = 0;    // Stream multiplexing ID
+    std::uint32_t seq = 0;          // Sequence number
+    std::uint32_t ack = 0;          // Acknowledgement number
+    std::uint16_t payload_len = 0;  // Payload length
+    std::vector<std::uint8_t> payload;
+
+    /// Nonce for handshake packets (SYN/SYN_ACK/ACK)
+    std::uint64_t nonce = 0;
+
+    /// Serialize to wire bytes.
+    std::vector<std::uint8_t> serialize() const;
+    /// Deserialize from wire bytes. Returns bytes consumed, 0 on error.
+    static std::uint32_t deserialize(const std::uint8_t* data, std::size_t len,
+                                     QTransportPacket& out);
+};
+
+/// Cached transport parameters for 0-RTT reconnection.
+struct CachedTransportParams {
+    PeerId peer;
+    std::uint64_t session_ticket = 0;   // Opaque ticket from prior session
+    std::uint32_t cached_rtt_us = 0;    // Last known RTT
+    std::uint32_t cached_cwnd = 0;      // Last known congestion window
+    std::chrono::steady_clock::time_point cached_at;
+
+    bool isValid(std::chrono::seconds max_age = std::chrono::seconds{3600}) const {
+        auto elapsed = std::chrono::steady_clock::now() - cached_at;
+        return elapsed < max_age && session_ticket != 0;
+    }
+};
+
+/// Per-stream state for multiplexed transport.
+struct StreamState {
+    std::uint16_t stream_id = 0;
+    std::uint32_t next_seq = 0;
+    std::uint32_t next_ack = 0;
+    std::uint32_t unacked_base = 0;
+
+    /// Sent packets awaiting acknowledgement (seq -> send_time).
+    std::map<std::uint32_t, std::chrono::steady_clock::time_point> in_flight;
+
+    /// Receive reorder buffer (seq -> packet).
+    std::map<std::uint32_t, QTransportPacket> reorder_buffer;
+
+    /// Loss detection: RACK-style reordering threshold.
+    static constexpr std::uint32_t REORDER_THRESHOLD = 3;
+    std::uint32_t largest_acked = 0;
+};
+
+/// Congestion control state (Cubic-inspired with beta=0.7).
+struct CongestionState {
+    float cwnd = 10.0f;             // Congestion window (packets)
+    float ssthresh = 64.0f;         // Slow-start threshold
+    float beta = 0.7f;              // Multiplicative decrease factor
+    bool in_slow_start = true;
+
+    // Cubic parameters
+    float wmax = 0.0f;              // Window at last congestion event
+    float k = 0.0f;                 // Time to reach wmax again
+    std::chrono::steady_clock::time_point epoch_start;
+
+    // RTT tracking
+    float srtt_us = 0.0f;           // Smoothed RTT (microseconds)
+    float rttvar_us = 0.0f;         // RTT variance
+    float rto_us = 1000000.0f;      // Retransmission timeout (1s initial)
+
+    /// Update RTT estimate (RFC 6298-style EWMA).
+    void updateRtt(float sample_us);
+
+    /// Called on packet loss: multiplicative decrease.
+    void onLoss();
+
+    /// Called on ACK: grow window (cubic or slow-start).
+    void onAck();
+};
+
+// ===========================================================================
+// QUIC 0-RTT Session Resumption
+// ===========================================================================
+//
+// Implements TLS 1.3-style session tickets for 0-RTT reconnection.
+//
+// Security properties:
+//   - Forward secrecy: tickets are single-use; resumed_key is deleted after use
+//   - Anti-replay: server maintains a time-windowed bloom filter of used ticket_ids
+//   - Freshness: tickets expire after a configurable window (default 7 days)
+//   - Key binding: 0-RTT keys are derived from ticket + client random via HKDF
+//
+// WARNING: 0-RTT data is inherently replayable by a network-level attacker who
+// captures the first flight. Applications must treat 0-RTT data as potentially
+// replayed and avoid non-idempotent operations in early data. The single-use
+// ticket enforcement prevents application-level replay but not network-level
+// replay within the server's anti-replay window.
+
+/// Session ticket issued by the server after a successful handshake.
+/// Used by the client to attempt 0-RTT on subsequent connections.
+struct SessionTicket {
+    /// Random 16-byte ticket identifier (used for anti-replay tracking).
+    std::array<std::uint8_t, 16> ticket_id{};
+
+    /// When this ticket was issued.
+    std::chrono::steady_clock::time_point creation_time;
+
+    /// When this ticket becomes invalid.
+    std::chrono::steady_clock::time_point expiry_time;
+
+    /// Key material derived from the original handshake's traffic secret.
+    /// Used as IKM for HKDF to derive the 0-RTT encryption key.
+    std::array<std::uint8_t, 32> resumed_key{};
+
+    /// Identity of the peer that issued this ticket.
+    PeerId peer_id;
+
+    /// Serialized transport parameters from the session that issued this ticket.
+    /// Allows the client to pre-configure congestion state for 0-RTT.
+    struct TransportParams {
+        std::uint32_t initial_cwnd = 10;
+        std::uint32_t max_streams = 16;
+        std::uint32_t cached_rtt_us = 0;
+        std::uint32_t max_packet_size = 1400;
+    } transport_params;
+
+    /// Check if this ticket is still valid (not expired).
+    bool isValid() const {
+        return std::chrono::steady_clock::now() < expiry_time;
+    }
+
+    /// Serialize ticket to wire bytes (for storage / NewSessionTicket message).
+    std::vector<std::uint8_t> serialize() const;
+
+    /// Deserialize ticket from wire bytes. Returns true on success.
+    static bool deserialize(const std::uint8_t* data, std::size_t len,
+                            SessionTicket& out);
+};
+
+/**
+ * @brief Thread-safe session ticket store with LRU eviction.
+ *
+ * Stores at most `max_capacity` tickets. When full, the least-recently-used
+ * ticket is evicted. Tickets are single-use: retrieving a ticket invalidates
+ * it to preserve forward secrecy (the resumed_key is not reusable).
+ *
+ * Thread safety: all public methods are mutex-protected.
+ */
+class SessionTicketStore {
+public:
+    /// Default max capacity: 256 tickets.
+    static constexpr std::size_t DEFAULT_MAX_CAPACITY = 256;
+
+    SessionTicketStore();
+    explicit SessionTicketStore(std::size_t max_capacity);
+
+    /// Store a ticket for a peer. Overwrites any existing ticket for that peer.
+    /// Evicts LRU entry if at capacity.
+    void store(const PeerId& peer_id, SessionTicket ticket);
+
+    /// Retrieve the most recent valid ticket for a peer.
+    /// Returns nullopt if no valid ticket exists.
+    /// NOTE: Does NOT consume the ticket. Use invalidate() after successful use.
+    std::optional<SessionTicket> retrieve(const PeerId& peer_id) const;
+
+    /// Invalidate (delete) a specific ticket by its ticket_id.
+    /// Called after successful 0-RTT to enforce single-use (forward secrecy).
+    void invalidate(const std::array<std::uint8_t, 16>& ticket_id);
+
+    /// Remove all expired tickets.
+    void pruneExpired();
+
+    /// Number of tickets currently stored.
+    std::size_t size() const;
+
+    /// Clear all stored tickets.
+    void clear();
+
+private:
+    mutable std::mutex mutex_;
+    std::size_t max_capacity_;
+
+    /// Ticket entry with LRU tracking.
+    struct TicketEntry {
+        SessionTicket ticket;
+        std::chrono::steady_clock::time_point last_access;
+    };
+
+    /// peer device_id -> ticket entry (most recent ticket per peer).
+    std::map<std::string, TicketEntry> tickets_;
+
+    /// Evict the least-recently-used entry. Caller must hold mutex_.
+    void evictLRU();
+};
+
+/**
+ * @brief Time-windowed bloom filter for 0-RTT anti-replay protection.
+ *
+ * The server tracks ticket_ids seen within a sliding time window equal to
+ * the maximum ticket age. Any 0-RTT attempt with a ticket_id already in
+ * the filter is rejected, preventing replay attacks.
+ *
+ * Implementation: a pair of rotating bloom filters. Each covers half the
+ * window. When the current half-window expires, the older filter is cleared
+ * and becomes the new "current" filter. This bounds memory while ensuring
+ * no ticket_id is accepted twice within the full window.
+ *
+ * False positive rate: configurable via num_bits and num_hashes.
+ * A false positive causes a spurious 0-RTT rejection (client falls back
+ * to 1-RTT), which is safe but suboptimal.
+ */
+class AntiReplayFilter {
+public:
+    struct Config {
+        /// Total bits in each bloom filter half.
+        std::uint32_t num_bits = 65536;       // 8KB per half
+        /// Number of hash functions.
+        std::uint32_t num_hashes = 4;
+        /// Time window (must match max ticket age).
+        std::chrono::seconds window{7 * 24 * 3600};  // 7 days default
+    };
+
+    AntiReplayFilter();
+    explicit AntiReplayFilter(Config config);
+
+    /// Check if a ticket_id has been seen. If not, record it and return false.
+    /// Returns true if the ticket_id is a replay (already seen or filter positive).
+    bool checkAndRecord(const std::array<std::uint8_t, 16>& ticket_id);
+
+    /// Rotate filters if the current half-window has expired.
+    /// Called internally by checkAndRecord, but can be called explicitly.
+    void maybeRotate();
+
+    /// Reset the filter (clear all state).
+    void reset();
+
+    /// Approximate number of entries recorded.
+    std::uint32_t approximateCount() const;
+
+private:
+    Config config_;
+    mutable std::mutex mutex_;
+
+    /// Two bloom filter halves for rotation.
+    std::vector<std::uint8_t> filter_a_;
+    std::vector<std::uint8_t> filter_b_;
+
+    /// Which filter is "current" (the other is "previous").
+    bool current_is_a_ = true;
+
+    /// When the current half-window started.
+    std::chrono::steady_clock::time_point window_start_;
+
+    /// Half the window duration (rotation interval).
+    std::chrono::seconds half_window_;
+
+    /// Entries recorded in current filter (approximate).
+    std::uint32_t count_a_ = 0;
+    std::uint32_t count_b_ = 0;
+
+    /// Compute bloom filter bit positions for a ticket_id.
+    std::vector<std::uint32_t> hashPositions(
+        const std::array<std::uint8_t, 16>& ticket_id) const;
+
+    /// Set a bit in a filter.
+    static void setBit(std::vector<std::uint8_t>& filter, std::uint32_t pos);
+
+    /// Test a bit in a filter.
+    static bool testBit(const std::vector<std::uint8_t>& filter, std::uint32_t pos);
+};
+
+/// Result of a 0-RTT connection attempt.
+enum class ZeroRttResult : std::uint8_t {
+    Success         = 0,  // 0-RTT accepted, early data delivered
+    Rejected        = 1,  // Ticket invalid/expired, fell back to 1-RTT
+    Replayed        = 2,  // Anti-replay filter triggered, connection refused
+    NoTicket        = 3,  // No cached ticket for this peer
+    CryptoError     = 4,  // Key derivation or decryption failure
+};
+
+/// 0-RTT connection request (client -> server first flight).
+struct ZeroRttClientHello {
+    /// The session ticket being presented.
+    SessionTicket ticket;
+
+    /// Fresh client random (32 bytes) for key derivation binding.
+    std::array<std::uint8_t, 32> client_random{};
+
+    /// Early data encrypted with the 0-RTT key.
+    /// Key = HKDF-Expand(ticket.resumed_key, "0rtt" || client_random, 32).
+    std::vector<std::uint8_t> encrypted_early_data;
+
+    /// Serialize to wire format.
+    std::vector<std::uint8_t> serialize() const;
+
+    /// Deserialize from wire format.
+    static bool deserialize(const std::uint8_t* data, std::size_t len,
+                            ZeroRttClientHello& out);
+};
+
+/// 0-RTT server response (server -> client).
+struct ZeroRttServerResponse {
+    /// Whether 0-RTT was accepted.
+    ZeroRttResult result = ZeroRttResult::Rejected;
+
+    /// Server random for binding the full handshake to fresh keying material.
+    std::array<std::uint8_t, 32> server_random{};
+
+    /// New session ticket issued after successful handshake completion.
+    /// Client should store this for future 0-RTT attempts.
+    std::optional<SessionTicket> new_ticket;
+
+    /// Serialize to wire format.
+    std::vector<std::uint8_t> serialize() const;
+
+    /// Deserialize from wire format.
+    static bool deserialize(const std::uint8_t* data, std::size_t len,
+                            ZeroRttServerResponse& out);
+};
+
+// Forward declaration for MeshSecurity (defined below in security section).
+class MeshSecurity;
+
+/**
+ * @brief QUIC-like reliable UDP transport for activation transfers.
+ *
+ * Features:
+ *   - 3-way handshake with random nonces (SYN/SYN-ACK/ACK)
+ *   - Stream multiplexing via stream_id in packet headers
+ *   - RACK-style loss detection (reordering threshold = 3)
+ *   - Cubic-inspired congestion control (beta = 0.7)
+ *   - 0-RTT reconnection using cached transport parameters
+ *
+ * Packet format: [magic:4][version:1][type:1][stream_id:2][seq:4][ack:4][payload_len:2][payload:N]
+ * Total header: 18 bytes.
+ */
+class QTransport {
+public:
+    struct Config {
+        std::uint16_t local_port = 9474;
+        std::uint32_t max_streams = 16;
+        std::uint32_t max_packet_size = 1400;   // MTU-safe
+        std::uint32_t initial_cwnd = 10;
+        std::uint32_t handshake_timeout_ms = 3000;
+        bool enable_zero_rtt = true;
+    };
+
+    QTransport();
+    explicit QTransport(Config config);
+    ~QTransport();
+
+    /// Initiate a connection to a peer (3-way handshake).
+    /// Returns true if connection established (or 0-RTT available).
+    bool connect(const PeerId& peer, const std::string& address, std::uint16_t port);
+
+    /// Accept an incoming connection (called on SYN receipt).
+    bool accept(const QTransportPacket& syn_packet, const std::string& from_address);
+
+    /// Send data on a specific stream. Handles packetization, retransmission.
+    bool send(std::uint16_t stream_id, const std::uint8_t* data, std::size_t len);
+
+    /// Receive data from a stream (returns empty if nothing available).
+    std::vector<std::uint8_t> recv(std::uint16_t stream_id);
+
+    /// Open a new stream. Returns stream_id (0 on failure).
+    std::uint16_t openStream();
+
+    /// Close a stream gracefully.
+    void closeStream(std::uint16_t stream_id);
+
+    /// Close the connection.
+    void close();
+
+    /// Get connection state.
+    QTransportState state() const { return state_; }
+
+    /// Get congestion state (for bandwidth probing integration).
+    CongestionState congestionState() const;
+
+    /// Cache current transport params for future 0-RTT.
+    CachedTransportParams cacheParams() const;
+
+    /// Attempt 0-RTT send using cached params.
+    bool sendZeroRtt(std::uint16_t stream_id, const std::uint8_t* data,
+                     std::size_t len, const CachedTransportParams& cached);
+
+    // ----- 0-RTT Session Resumption (full cryptographic implementation) -----
+
+    /// Attempt 0-RTT connection using a cached session ticket.
+    /// If a valid ticket exists for the peer, encrypts early_data with the
+    /// derived 0-RTT key and sends it in the first flight.
+    /// Returns Success if 0-RTT was sent; NoTicket/Rejected on failure.
+    ZeroRttResult connect0RTT(const PeerId& peer,
+                              const std::string& address,
+                              std::uint16_t port,
+                              const std::uint8_t* early_data,
+                              std::size_t early_data_len);
+
+    /// Server-side: accept and validate a 0-RTT connection attempt.
+    /// Validates the ticket, checks anti-replay, decrypts early data.
+    /// On success: returns decrypted early data and issues a new ticket.
+    /// On failure: returns empty data; client must fall back to 1-RTT.
+    struct ZeroRttAcceptResult {
+        ZeroRttResult result = ZeroRttResult::Rejected;
+        std::vector<std::uint8_t> early_data;       // decrypted early payload
+        std::optional<SessionTicket> new_ticket;    // ticket for future use
+    };
+    ZeroRttAcceptResult accept0RTT(const ZeroRttClientHello& client_hello,
+                                   const std::string& from_address);
+
+    /// Issue a new session ticket to the client after successful handshake.
+    /// Called by the server after 1-RTT or 0-RTT handshake completes.
+    SessionTicket issueSessionTicket(const PeerId& client_peer);
+
+    /// Store a received session ticket (client-side).
+    void storeSessionTicket(const SessionTicket& ticket);
+
+    /// Get the session ticket store (for inspection/testing).
+    const SessionTicketStore& ticketStore() const { return ticket_store_; }
+
+    /// Get the anti-replay filter (for inspection/testing).
+    const AntiReplayFilter& antiReplayFilter() const { return anti_replay_; }
+
+    /// Process incoming raw UDP packet.
+    void processIncoming(const std::uint8_t* data, std::size_t len);
+
+    /// Detect lost packets (RACK-style with reordering threshold).
+    std::vector<std::uint32_t> detectLosses(std::uint16_t stream_id);
+
+    /// Retransmit lost packets for a stream.
+    void retransmit(std::uint16_t stream_id, const std::vector<std::uint32_t>& lost_seqs);
+
+private:
+    Config config_;
+    QTransportState state_ = QTransportState::Closed;
+    mutable std::mutex mutex_;
+
+    // Connection state
+    PeerId remote_peer_;
+    std::string remote_address_;
+    std::uint16_t remote_port_ = 0;
+    int socket_fd_ = -1;
+    std::uint64_t local_nonce_ = 0;
+    std::uint64_t remote_nonce_ = 0;
+
+    // Streams
+    std::map<std::uint16_t, StreamState> streams_;
+    std::uint16_t next_stream_id_ = 1;
+
+    // Congestion control
+    CongestionState congestion_;
+
+    // 0-RTT cache
+    std::map<std::string, CachedTransportParams> zero_rtt_cache_;
+
+    // 0-RTT session resumption state
+    SessionTicketStore ticket_store_;
+    AntiReplayFilter anti_replay_;
+    MeshSecurity* security_ = nullptr;  // borrowed pointer for crypto ops
+
+    /// Default ticket lifetime.
+    static constexpr auto TICKET_LIFETIME = std::chrono::hours{7 * 24};  // 7 days
+
+    /// Derive 0-RTT encryption key from ticket resumed_key + client random.
+    /// key_out = HKDF-Expand(HKDF-Extract(client_random, resumed_key), "0rtt", 32)
+    std::array<std::uint8_t, 32> derive0RttKey(
+        const std::array<std::uint8_t, 32>& resumed_key,
+        const std::array<std::uint8_t, 32>& client_random) const;
+
+    /// Generate cryptographically random bytes.
+    static void generateRandom(std::uint8_t* out, std::size_t len);
+
+    // I/O thread
+    std::thread io_thread_;
+    std::atomic<bool> shutdown_{false};
+
+    void ioLoop();
+    void handleSyn(const QTransportPacket& pkt);
+    void handleSynAck(const QTransportPacket& pkt);
+    void handleAck(const QTransportPacket& pkt);
+    void handleData(const QTransportPacket& pkt);
+    void handleFin(const QTransportPacket& pkt);
+    void sendRawPacket(const QTransportPacket& pkt);
+    std::uint64_t generateNonce();
+};
+
+// ===========================================================================
+// BBR-Inspired Bandwidth Probing and Congestion-Aware Scheduling
+// ===========================================================================
+
+/// BBR probing phases.
+enum class BbrPhase : std::uint8_t {
+    STARTUP    = 0,  // Exponential bandwidth growth
+    DRAIN      = 1,  // Flush queues after startup
+    PROBE_BW   = 2,  // Steady-state with gain cycling
+    PROBE_RTT  = 3,  // Periodic RTT measurement (drain queue)
+};
+
+/// A single delivery rate sample.
+struct DeliveryRateSample {
+    float rate_bps = 0.0f;            // bytes per second
+    float rtt_us = 0.0f;             // RTT for this sample
+    std::chrono::steady_clock::time_point timestamp;
+    bool is_app_limited = false;     // True if sender was idle
+};
+
+/// Windowed max/min filter (generic, configurable window size).
+template<typename T>
+struct WindowedFilter {
+    struct Sample {
+        T value;
+        std::uint32_t round;         // Round number when sampled
+    };
+
+    std::uint32_t window_size = 10;  // Number of rounds in the window
+    std::vector<Sample> samples;
+
+    void update(T value, std::uint32_t round) {
+        // Remove expired samples
+        while (!samples.empty() &&
+               round - samples.front().round >= window_size) {
+            samples.erase(samples.begin());
+        }
+        // For max filter: remove samples smaller than new value
+        // (caller picks max vs min by using appropriate comparator)
+        samples.push_back({value, round});
+    }
+
+    T best(bool want_max = true) const {
+        if (samples.empty()) return T{};
+        T result = samples[0].value;
+        for (const auto& s : samples) {
+            if (want_max ? (s.value > result) : (s.value < result)) {
+                result = s.value;
+            }
+        }
+        return result;
+    }
+
+    bool empty() const { return samples.empty(); }
+};
+
+/// Bandwidth estimation state (BBR-inspired).
+struct BandwidthEstimate {
+    /// Bottleneck bandwidth: windowed max of delivery rates (10-round window).
+    WindowedFilter<float> btl_bw;
+
+    /// Propagation RTT: windowed min of RTT samples (10-round window).
+    WindowedFilter<float> rt_prop;
+
+    /// Current probing phase.
+    BbrPhase phase = BbrPhase::STARTUP;
+
+    /// Round counter (one round = one RTT interval).
+    std::uint32_t round_count = 0;
+
+    /// Gain cycling for PROBE_BW phase.
+    /// Cycle: [1.25, 0.75, 1, 1, 1, 1, 1, 1] (8 phases).
+    static constexpr float GAIN_CYCLE[] = {1.25f, 0.75f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    std::uint8_t gain_cycle_index = 0;
+
+    /// STARTUP parameters.
+    float startup_growth_factor = 2.0f;   // Exponential growth
+    bool filled_pipe = false;             // True when BtlBw stops growing
+
+    /// Current pacing rate and CWND target.
+    float pacing_rate_bps = 0.0f;
+    float target_cwnd_bytes = 0.0f;
+
+    /// Get current pacing gain based on phase.
+    float currentGain() const;
+
+    /// Estimated bandwidth (btlBw best).
+    float estimatedBandwidthBps() const;
+
+    /// Estimated propagation RTT (rtProp best).
+    float estimatedRttUs() const;
+};
+
+/**
+ * @brief BBR-inspired bandwidth probing and congestion-aware scheduling.
+ *
+ * Implements bandwidth estimation via delivery rate tracking:
+ *   - Tracks delivery rate over RTT intervals
+ *   - Maintains btlBw (max bandwidth) via windowed max (10-round window)
+ *   - Maintains rtProp (min RTT) via windowed min (10-round window)
+ *   - Probing phases: STARTUP -> DRAIN -> PROBE_BW (with gain cycling)
+ *
+ * The DP layer partitioner uses these estimates for transfer_time computation
+ * between devices instead of static bandwidth values.
+ *
+ * Gain cycling in PROBE_BW: [1.25, 0.75, 1, 1, 1, 1, 1, 1]
+ */
+class BandwidthProber {
+public:
+    struct Config {
+        std::uint32_t window_rounds = 10;          // BtlBw/RtProp filter window
+        float startup_growth = 2.0f;               // 2x growth per round in STARTUP
+        float drain_target = 1.0f;                 // Drain until inflight <= BDP
+        std::uint32_t probe_rtt_interval_ms = 10000; // Probe RTT every 10s
+        std::uint32_t min_cwnd_packets = 4;        // Minimum CWND
+    };
+
+    BandwidthProber();
+    explicit BandwidthProber(Config config);
+
+    /// Record a delivery rate sample (called on each ACK).
+    void onAck(float delivered_bytes, float rtt_us, float elapsed_us,
+               bool is_app_limited = false);
+
+    /// Advance to next round (one RTT interval).
+    void advanceRound();
+
+    /// Get current bandwidth estimate for a peer link.
+    BandwidthEstimate estimate() const;
+
+    /// Get estimated bandwidth in kbps (for use by LayerPartitioner).
+    std::uint32_t estimatedBandwidthKbps() const;
+
+    /// Get estimated RTT in milliseconds.
+    float estimatedRttMs() const;
+
+    /// Get current pacing rate (bytes per second).
+    float pacingRateBps() const;
+
+    /// Get target CWND in bytes.
+    float targetCwndBytes() const;
+
+    /// Current phase.
+    BbrPhase phase() const;
+
+    /// Force transition to a specific phase (for testing).
+    void forcePhase(BbrPhase new_phase);
+
+private:
+    Config config_;
+    BandwidthEstimate state_;
+    mutable std::mutex mutex_;
+
+    // Phase transition logic
+    void checkStartupExit();
+    void checkDrainExit();
+    void advanceGainCycle();
+    void updatePacingAndCwnd();
+
+    // Delivery rate tracking
+    float total_delivered_ = 0.0f;
+    std::chrono::steady_clock::time_point last_round_start_;
+};
+
+// ===========================================================================
+// mTLS-like Security Layer (Simplified TLS 1.3)
+// ===========================================================================
+
+/// Security handshake state.
+enum class SecurityHandshakeState : std::uint8_t {
+    None           = 0,
+    ClientHello    = 1,   // Sent X25519 public key
+    ServerHello    = 2,   // Received peer's public key
+    Authenticated  = 3,   // Key exchange complete, group membership verified
+    Failed         = 4,
+};
+
+/// X25519 key pair (32-byte private key, 32-byte public key).
+struct X25519KeyPair {
+    std::array<std::uint8_t, 32> private_key{};
+    std::array<std::uint8_t, 32> public_key{};
+};
+
+/// HKDF-derived session keys for ChaCha20-Poly1305.
+struct SessionKeys {
+    std::array<std::uint8_t, 32> client_write_key{};  // Client -> Server encryption
+    std::array<std::uint8_t, 32> server_write_key{};  // Server -> Client encryption
+    std::array<std::uint8_t, 12> client_write_iv{};   // Client nonce base
+    std::array<std::uint8_t, 12> server_write_iv{};   // Server nonce base
+};
+
+/// Device attestation using pre-shared group key.
+struct MeshAttestation {
+    std::array<std::uint8_t, 32> group_key_hash{};    // SHA-256 of group PSK
+    std::array<std::uint8_t, 32> attestation_mac{};   // HMAC proving possession
+    std::string device_id;
+    std::uint64_t timestamp = 0;                      // Freshness
+};
+
+/// Security context for an authenticated peer connection.
+struct SecurityContext {
+    SecurityHandshakeState state = SecurityHandshakeState::None;
+    PeerId peer;
+
+    // X25519 ephemeral key pair for this session
+    X25519KeyPair local_ephemeral{};
+    std::array<std::uint8_t, 32> peer_public_key{};
+
+    // Shared secret from X25519 key exchange
+    std::array<std::uint8_t, 32> shared_secret{};
+
+    // HKDF-derived session keys
+    SessionKeys session_keys{};
+
+    // Nonce counters (prevent replay)
+    std::uint64_t send_nonce_counter = 0;
+    std::uint64_t recv_nonce_counter = 0;
+
+    // Peer verification
+    bool peer_attested = false;        // Proved mesh membership via group key
+    bool keys_derived = false;         // Session keys available
+
+    // Handshake transcript hash (for key derivation binding)
+    std::array<std::uint8_t, 32> transcript_hash{};
+};
+
+/**
+ * @brief mTLS-like security layer for device-to-device authentication.
+ *
+ * Implements a simplified TLS 1.3 handshake:
+ *   1. X25519 key exchange (curve25519 Montgomery curve arithmetic)
+ *   2. HKDF key derivation (HMAC-SHA256-based)
+ *   3. ChaCha20-Poly1305 AEAD for payload encryption
+ *   4. Device attestation via pre-shared group key (mesh membership proof)
+ *
+ * Handshake flow:
+ *   Client                         Server
+ *   ------                         ------
+ *   ClientHello (ephemeral pub) -->
+ *                                <-- ServerHello (ephemeral pub + attestation)
+ *   Finished (attestation)      -->
+ *                                    [derive session keys]
+ *   <-- Application Data (encrypted with ChaCha20-Poly1305) -->
+ *
+ * The group pre-shared key (PSK) proves mesh membership without a CA.
+ * Each device must possess the PSK to compute valid attestation MACs.
+ */
+class MeshSecurity {
+public:
+    struct Config {
+        /// Pre-shared group key (32 bytes). All mesh members must share this.
+        std::array<std::uint8_t, 32> group_psk{};
+        /// Enable encryption (can be disabled for testing).
+        bool enable_encryption = true;
+        /// Rekey after this many messages.
+        std::uint64_t rekey_interval = 1000000;
+    };
+
+    MeshSecurity();
+    explicit MeshSecurity(Config config);
+
+    /// Generate an X25519 ephemeral key pair.
+    X25519KeyPair generateKeyPair();
+
+    /// Perform X25519 scalar multiplication (shared secret derivation).
+    /// shared_out = private_key * peer_public_key on Curve25519.
+    bool x25519(const std::array<std::uint8_t, 32>& private_key,
+                const std::array<std::uint8_t, 32>& peer_public_key,
+                std::array<std::uint8_t, 32>& shared_out);
+
+    /// HKDF-Extract: PRK = HMAC-SHA256(salt, IKM).
+    std::array<std::uint8_t, 32> hkdfExtract(
+        const std::uint8_t* salt, std::size_t salt_len,
+        const std::uint8_t* ikm, std::size_t ikm_len);
+
+    /// HKDF-Expand: OKM = HMAC-based expansion to desired length.
+    std::vector<std::uint8_t> hkdfExpand(
+        const std::array<std::uint8_t, 32>& prk,
+        const std::uint8_t* info, std::size_t info_len,
+        std::size_t output_len);
+
+    /// Derive session keys from shared secret (TLS 1.3-style key schedule).
+    SessionKeys deriveSessionKeys(const std::array<std::uint8_t, 32>& shared_secret,
+                                  const std::array<std::uint8_t, 32>& transcript_hash);
+
+    /// Encrypt payload using ChaCha20-Poly1305 AEAD.
+    /// Returns ciphertext + 16-byte Poly1305 tag appended.
+    std::vector<std::uint8_t> encrypt(
+        const SessionKeys& keys, bool is_client,
+        std::uint64_t nonce_counter,
+        const std::uint8_t* plaintext, std::size_t plaintext_len,
+        const std::uint8_t* aad, std::size_t aad_len);
+
+    /// Decrypt and verify ChaCha20-Poly1305 AEAD.
+    /// Returns plaintext, or empty vector on authentication failure.
+    std::vector<std::uint8_t> decrypt(
+        const SessionKeys& keys, bool is_client,
+        std::uint64_t nonce_counter,
+        const std::uint8_t* ciphertext, std::size_t ciphertext_len,
+        const std::uint8_t* aad, std::size_t aad_len);
+
+    /// Create mesh attestation (proves group membership).
+    MeshAttestation createAttestation(const std::string& device_id);
+
+    /// Verify peer's mesh attestation.
+    bool verifyAttestation(const MeshAttestation& attestation);
+
+    /// Initiate handshake as client. Returns ClientHello message.
+    std::vector<std::uint8_t> initiateHandshake(SecurityContext& ctx);
+
+    /// Respond to ClientHello as server. Returns ServerHello message.
+    std::vector<std::uint8_t> respondHandshake(SecurityContext& ctx,
+                                               const std::uint8_t* client_hello,
+                                               std::size_t len);
+
+    /// Finalize handshake (client receives ServerHello, derives keys).
+    bool finalizeHandshake(SecurityContext& ctx,
+                           const std::uint8_t* server_hello,
+                           std::size_t len);
+
+    /// Get security context for a peer.
+    std::optional<SecurityContext> getContext(const PeerId& peer) const;
+
+private:
+    Config config_;
+    mutable std::mutex mutex_;
+    std::map<std::string, SecurityContext> contexts_;  // device_id -> context
+
+    // Curve25519 field arithmetic (mod 2^255 - 19)
+    // Simplified representation using arrays of uint64_t limbs
+    using Fe = std::array<std::uint64_t, 5>;  // 5 x 51-bit limbs
+
+    Fe feFromBytes(const std::uint8_t bytes[32]);
+    void feToBytes(std::uint8_t out[32], const Fe& f);
+    Fe feAdd(const Fe& a, const Fe& b);
+    Fe feSub(const Fe& a, const Fe& b);
+    Fe feMul(const Fe& a, const Fe& b);
+    Fe feSquare(const Fe& a);
+    Fe feInvert(const Fe& a);
+    // Montgomery ladder scalar multiplication
+    void scalarmult(std::uint8_t result[32],
+                    const std::uint8_t scalar[32],
+                    const std::uint8_t point[32]);
+
+    // SHA-256 (simplified, for HKDF/HMAC)
+    std::array<std::uint8_t, 32> sha256(const std::uint8_t* data, std::size_t len);
+    std::array<std::uint8_t, 32> hmacSha256(
+        const std::uint8_t* key, std::size_t key_len,
+        const std::uint8_t* data, std::size_t data_len);
+
+    // ChaCha20 core
+    void chacha20Block(std::uint32_t output[16],
+                       const std::uint32_t key[8],
+                       std::uint32_t counter,
+                       const std::uint32_t nonce[3]);
+    void chacha20Encrypt(const std::uint8_t* key,
+                         const std::uint8_t* nonce_12,
+                         std::uint32_t counter,
+                         const std::uint8_t* input,
+                         std::uint8_t* output,
+                         std::size_t len);
+
+    // Poly1305 MAC
+    void poly1305Mac(std::uint8_t tag[16],
+                     const std::uint8_t* key,
+                     const std::uint8_t* msg, std::size_t msg_len);
 };
 
 }  // namespace sparx::mesh

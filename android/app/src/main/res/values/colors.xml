@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0D1117</color>
+    <color name="ic_launcher_background">#0D0D0D</color>
+    <color name="colorPrimary">#00E676</color>
+    <color name="colorOnPrimary">#000000</color>
+    <color name="colorSurface">#0D0D0D</color>
+    <color name="colorOnSurface">#FFFFFF</color>
+    <color name="colorAccent">#00E676</color>
+    <color name="card_background">#141414</color>
+    <color name="card_border">#2A2A2A</color>
+    <color name="text_secondary">#888888</color>
 </resources>

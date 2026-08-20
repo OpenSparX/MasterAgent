@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.OpenSparX" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">#00FF88</item>
-        <item name="colorPrimaryDark">#0D1117</item>
-        <item name="colorAccent">#00DDFF</item>
-        <item name="android:windowBackground">#0D1117</item>
-        <item name="android:statusBarColor">#0D1117</item>
-        <item name="android:navigationBarColor">#0D1117</item>
-        <item name="android:textColorPrimary">#E6EDF3</item>
-        <item name="android:textColorSecondary">#8B949E</item>
+    <style name="Theme.OpenSparX" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#00E676</item>
+        <item name="colorOnPrimary">#000000</item>
+        <item name="colorPrimaryDark">#0D0D0D</item>
+        <item name="colorAccent">#00E676</item>
+        <item name="colorSurface">#0D0D0D</item>
+        <item name="colorOnSurface">#FFFFFF</item>
+        <item name="android:windowBackground">#0D0D0D</item>
+        <item name="android:statusBarColor">#0D0D0D</item>
+        <item name="android:navigationBarColor">#0D0D0D</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#888888</item>
     </style>
 </resources>

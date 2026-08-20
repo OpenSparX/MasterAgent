@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(MasterAgent VERSION 2.2.1 LANGUAGES CXX)
+project(MasterAgent VERSION 0.3.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

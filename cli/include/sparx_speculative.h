@@ -40,7 +40,8 @@
  * Prediction models (ordered by sophistication):
  *   Level 1: Bigram frequency — P(next_intent | current_intent)
  *   Level 2: Trigram + time-of-day — P(intent | prev_2_intents, hour)
- *   Level 3: Recurrent context — lightweight RNN on intent sequence embeddings
+ *   Level 3: Recurrent context — lightweight LSTM on intent sequence embeddings
+ *   Level 4: Mamba-2 SSM — selective state space model for long-range patterns
  *
  * The prediction model trains online from the user's own interaction history,
  * stored in ~/.sparx/speculation/history.jsonl (encrypted, same key as learning).
@@ -51,6 +52,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -106,9 +108,11 @@ struct PredictionConfig {
 
     // --- Level 3 LSTM ensemble weights ---
     /// Weight for bigram+temporal (Level 1&2) in the ensemble.
-    float ngram_weight = 0.6f;
+    float ngram_weight = 0.5f;
     /// Weight for LSTM (Level 3) in the ensemble.
-    float lstm_weight = 0.4f;
+    float lstm_weight = 0.3f;
+    /// Weight for Mamba-2 SSM (Level 4) in the ensemble.
+    float mamba_weight = 0.2f;
     /// Minimum history length before LSTM predictions are used.
     std::uint32_t lstm_min_history = 10;
     /// LSTM learning rate for online SGD.
@@ -117,6 +121,20 @@ struct PredictionConfig {
     float lstm_grad_clip = 5.0f;
     /// Path for LSTM binary weights file.
     std::string lstm_weights_path;  // defaults to ~/.sparx/speculation/lstm.bin
+
+    // --- Level 4 Mamba-2 SSM parameters ---
+    /// Minimum history length before Mamba-2 predictions are used.
+    std::uint32_t mamba_min_history = 8;
+    /// Mamba-2 input dimension (must match kEmbeddingDim).
+    std::uint32_t mamba_input_dim = 64;
+    /// Mamba-2 state dimension for the SSM.
+    std::uint32_t mamba_state_dim = 32;
+    /// Mamba-2 learning rate for online truncated BPTT.
+    float mamba_learning_rate = 0.005f;
+    /// Truncated BPTT sequence length for Mamba-2 online training.
+    std::uint32_t mamba_bptt_length = 16;
+    /// Path for Mamba-2 binary weights file.
+    std::string mamba_weights_path;  // defaults to ~/.sparx/speculation/mamba.bin
 };
 
 // ---------------------------------------------------------------------------
@@ -129,6 +147,21 @@ constexpr size_t kEmbeddingDim = 64;
 
 /// A dense embedding vector (fixed-size for cache-friendliness).
 using EmbeddingVec = std::array<float, kEmbeddingDim>;
+
+// ---------------------------------------------------------------------------
+// NPU Inference Backend Dispatch Interface
+// ---------------------------------------------------------------------------
+
+/// Callback for dispatching pre-computed results to the NPU inference backend.
+/// Called when speculation confidence exceeds the dispatch threshold (default 0.8).
+/// Parameters:
+///   - prompt: the predicted user input
+///   - cached_result: the pre-computed speculative output
+///   - confidence: prediction confidence [0.0, 1.0]
+/// Returns true if the backend accepted the dispatch (KV cache pre-warmed).
+using NpuDispatchFn = std::function<bool(const std::string& prompt,
+                                         const std::string& cached_result,
+                                         float confidence)>;
 
 /**
  * @brief Lightweight on-device text embedder using SimHash over character n-grams.
@@ -148,7 +181,17 @@ using EmbeddingVec = std::array<float, kEmbeddingDim>;
  */
 class EmbeddingIndex {
 public:
+    /// HNSW parameters for approximate nearest neighbor search.
+    struct HnswParams {
+        size_t M = 16;                  // max connections per node per layer
+        size_t efConstruction = 200;    // search width during construction
+        size_t efSearch = 50;           // search width during query
+        // Probability of layer assignment: P = 1/ln(M)
+        double levelMultiplier() const { return 1.0 / std::log(static_cast<double>(M)); }
+    };
+
     EmbeddingIndex() = default;
+    explicit EmbeddingIndex(HnswParams params) : hnsw_params_(params) {}
 
     /// Compute embedding for a text input.
     EmbeddingVec embed(const std::string& text) const;
@@ -156,10 +199,10 @@ public:
     /// Cosine similarity between two embedding vectors [-1, 1].
     static float cosineSimilarity(const EmbeddingVec& a, const EmbeddingVec& b);
 
-    /// Store an embedding with associated cache key.
+    /// Store an embedding with associated cache key. Uses HNSW for indexing.
     void insert(const std::string& cache_key, const EmbeddingVec& vec);
 
-    /// Find the nearest neighbor above threshold. Returns cache_key + similarity.
+    /// Find the nearest neighbor above threshold using HNSW graph traversal.
     struct NearestResult {
         std::string cache_key;
         float similarity = 0.0f;
@@ -170,11 +213,11 @@ public:
     /// Remove an entry by cache key.
     void remove(const std::string& cache_key);
 
-    /// Clear all entries.
+    /// Clear all entries and HNSW graph.
     void clear();
 
     /// Number of indexed entries.
-    size_t size() const { return entries_.size(); }
+    size_t size() const { return nodes_.size(); }
 
 private:
     /// Hash a trigram to a deterministic random projection vector.
@@ -183,11 +226,44 @@ private:
     /// Normalize text for embedding (lowercase, strip punctuation, collapse whitespace).
     static std::string normalizeForEmbedding(const std::string& text);
 
+    // --- HNSW graph structures ---
+
+    /// A node in the HNSW graph. Each node exists on layers [0, level].
+    struct HnswNode {
+        std::string cache_key;
+        EmbeddingVec vec;
+        int level = 0;  // max layer this node belongs to
+        // Connections per layer: neighbors[layer] = list of node indices
+        std::vector<std::vector<size_t>> neighbors;
+    };
+
+    HnswParams hnsw_params_;
+    std::vector<HnswNode> nodes_;
+    int max_level_ = -1;        // current max layer in the graph
+    size_t entry_point_ = 0;    // index of the entry point node
+
+    // Map from cache_key to node index for O(1) removal lookup
+    std::map<std::string, size_t> key_to_index_;
+
+    /// Assign a random level to a new node (geometric distribution).
+    int randomLevel() const;
+
+    /// Greedy search on a single layer: from entry, find ef closest nodes to query.
+    /// Returns vector of (node_index, similarity) sorted descending by similarity.
+    std::vector<std::pair<size_t, float>> searchLayer(
+        const EmbeddingVec& query, size_t entry_id, size_t ef, int layer) const;
+
+    /// Select neighbors with heuristic pruning (Algorithm 4 from HNSW paper).
+    /// Picks up to M neighbors that are both close to the query AND well-distributed.
+    std::vector<size_t> selectNeighborsHeuristic(
+        const EmbeddingVec& query, const std::vector<std::pair<size_t, float>>& candidates,
+        size_t M) const;
+
+    // Legacy flat storage for backward compatibility (used during removal)
     struct IndexEntry {
         std::string cache_key;
         EmbeddingVec vec;
     };
-    std::vector<IndexEntry> entries_;
 };
 
 /**
@@ -196,11 +272,59 @@ private:
  * Uses a multi-level model:
  *   1. Bigram: P(B|A) from transition counts
  *   2. Temporal: P(B|A, hour) — time-weighted bigram
- *   3. Sequence: P(B|A_{t-2}, A_{t-1}, hour, day) — trigram + context
+ *   3. Sequence: P(B|A_{t-2}, A_{t-1}, hour, day) — LSTM on embeddings
+ *   4. SSM: Mamba-2 selective state space model — captures long-range patterns
  *
  * The final prediction is a weighted ensemble of all levels.
  */
-class LstmPredictor;  // Defined in sparx_speculative.cpp
+class LstmPredictor;   // Defined in sparx_speculative.cpp
+class MambaPredictor;  // Defined in sparx_speculative.cpp
+
+// ---------------------------------------------------------------------------
+// NpuScanDispatcher — stub interface for future QNN delegate binding
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief NPU dispatch interface for SSD parallel scan offloading.
+ *
+ * When available, the structured state space duality (SSD) scan can be
+ * dispatched to a Qualcomm QNN delegate for hardware-accelerated parallel
+ * prefix computation. This stub provides the interface contract; the actual
+ * binding is provided by the platform-specific NPU backend.
+ */
+class NpuScanDispatcher {
+public:
+    virtual ~NpuScanDispatcher() = default;
+
+    /// Returns true if an NPU backend capable of scan offload is present.
+    virtual bool isAvailable() const = 0;
+
+    /// Dispatches a chunk of the parallel scan to the NPU.
+    /// @param decay_data  Pointer to decay values [chunk_size * state_dim], row-major.
+    /// @param input_data  Pointer to B_bar values [chunk_size * state_dim], row-major.
+    /// @param h_init      Pointer to initial state [state_dim].
+    /// @param chunk_size  Number of timesteps in this chunk.
+    /// @param state_dim   Dimension of the SSM hidden state.
+    /// @param out_states  Output pointer for computed states [(chunk_size+1) * state_dim].
+    virtual void dispatchChunk(const float* decay_data,
+                               const float* input_data,
+                               const float* h_init,
+                               size_t chunk_size,
+                               size_t state_dim,
+                               float* out_states) = 0;
+
+    /// Blocks until all dispatched chunks have completed.
+    virtual void syncResults() = 0;
+};
+
+/// Benchmark result comparing sequential vs parallel scan.
+struct ScanBenchmark {
+    double sequential_us = 0.0;   // microseconds for sequential path
+    double parallel_us = 0.0;     // microseconds for SSD parallel path
+    double speedup() const {
+        return parallel_us > 0.0 ? sequential_us / parallel_us : 0.0;
+    }
+};
 
 class IntentPredictor {
 public:
@@ -254,6 +378,8 @@ private:
 
     // Level 3: Lightweight LSTM intent predictor
     mutable std::unique_ptr<LstmPredictor> lstm_;
+    // Level 4: Mamba-2 selective state space model predictor
+    mutable std::unique_ptr<MambaPredictor> mamba_;
     EmbeddingIndex intent_embedder_;  // shared embedder for intent names
 };
 
@@ -364,6 +490,11 @@ struct ExecutorConfig {
     std::chrono::milliseconds preemption_grace_ms{50};
     /// Maximum time to spend on one speculation.
     std::chrono::milliseconds max_speculation_time_ms{5000};
+    /// Confidence threshold above which we dispatch to NPU for KV cache pre-warming.
+    float npu_dispatch_threshold = 0.8f;
+    /// Optional NPU dispatch callback. When set and confidence > threshold,
+    /// pre-warms the inference backend's KV cache with the speculative result.
+    NpuDispatchFn npu_dispatch_fn = nullptr;
 };
 
 /// Metrics for speculation effectiveness.
@@ -373,6 +504,8 @@ struct SpeculationMetrics {
     std::uint64_t preempted = 0;
     std::uint64_t expired = 0;
     std::uint64_t context_mismatched = 0;
+    std::uint64_t npu_dispatches = 0;        // successful NPU pre-warm dispatches
+    std::uint64_t npu_dispatch_failures = 0; // dispatch attempts that were rejected
     float avg_latency_saved_ms = 0.0f;
     float npu_idle_utilization_pct = 0.0f;
     float hit_rate() const {
@@ -422,6 +555,9 @@ public:
 
     /// Signals that real inference is starting (preempts active speculation).
     void preempt();
+
+    /// Sets or replaces the NPU dispatch callback at runtime.
+    void setNpuDispatchFn(NpuDispatchFn fn);
 
     /// Returns speculation effectiveness metrics.
     SpeculationMetrics metrics() const;

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.graphics.PixelFormat
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -15,9 +16,17 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.IBinder
 import android.os.Bundle
+import android.provider.Settings
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.opensparx.agent.R
 import com.opensparx.agent.jni.AgentBridge
+import com.opensparx.agent.ui.ChatBubbleService
 import com.opensparx.agent.ui.MainActivity
 import kotlinx.coroutines.*
 import java.util.Calendar
@@ -31,14 +40,34 @@ import java.util.Calendar
  * - Device motion/stillness (accelerometer)
  * - Screen on/off state
  * - App usage patterns (via UsageStatsManager)
+ * - Demo signals (proactive suggestion cycling)
  *
  * Resource management:
  * - Sensors registered at low frequency (SENSOR_DELAY_NORMAL)
  * - Location updates at 60s intervals (low power)
  * - Time signals pushed every 30s
+ * - Proactive demo signals every 30s
  * - Total CPU overhead: <1% in monitoring mode
  */
 class ContextMonitorService : Service(), SensorEventListener, LocationListener {
+
+    // ─── Demo Proactive Signal System ───────────────────────────────────
+
+    data class ProactiveSignal(val id: String, val suggestion: String)
+
+    private val demoSignals = listOf(
+        ProactiveSignal("time_morning", "早上好！检测到你通常这个时候查看日程，要我帮你总结今天的安排吗？"),
+        ProactiveSignal("battery_low", "电量低于20%，要我帮你关闭后台高耗电应用吗？"),
+        ProactiveSignal("location_office", "检测到你到达办公室，要我帮你连接公司WiFi并打开工作应用吗？"),
+        ProactiveSignal("notification_flood", "过去1小时收到23条通知，要我帮你生成摘要吗？"),
+        ProactiveSignal("idle_detected", "检测到设备空闲，正在后台预计算可能的下一步操作...(Speculation Engine)"),
+    )
+
+    private var demoSignalIndex = 0
+    private var proactiveCardView: View? = null
+    private var windowManager: WindowManager? = null
+
+    // ─── Core State ─────────────────────────────────────────────────────
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private lateinit var sensorManager: SensorManager
@@ -56,9 +85,11 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
 
     override fun onCreate() {
         super.onCreate()
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         startSignalSources()
+        startDemoSignalLoop()
     }
 
     private fun createNotificationChannel() {
@@ -90,6 +121,7 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        dismissProactiveCard()
         sensorManager.unregisterListener(this)
         locationManager?.removeUpdates(this)
         super.onDestroy()
@@ -154,22 +186,22 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
                 if (delta < 0.1) {
                     stillnessCounter++
                     if (stillnessCounter == 100) { // ~5 seconds of stillness
-                        AgentBridge.pushSignal("device.motion", 0.0, 0.95f)
-                        AgentBridge.pushLabelSignal("device.state", "stationary", 0.9f)
+                        tryPushSignal("device.motion", 0.0, 0.95f)
+                        tryPushLabelSignal("device.state", "stationary", 0.9f)
                     }
                 } else {
                     if (stillnessCounter > 100) {
-                        AgentBridge.pushLabelSignal("device.state", "moving", 0.9f)
+                        tryPushLabelSignal("device.state", "moving", 0.9f)
                     }
                     stillnessCounter = 0
                 }
             }
             Sensor.TYPE_LIGHT -> {
                 val lux = event.values[0].toDouble()
-                AgentBridge.pushSignal("env.light", lux, 0.95f)
+                tryPushSignal("env.light", lux, 0.95f)
                 // Dark environment detection
                 if (lux < 10.0) {
-                    AgentBridge.pushLabelSignal("env.brightness", "dark", 0.9f)
+                    tryPushLabelSignal("env.brightness", "dark", 0.9f)
                 }
             }
         }
@@ -180,9 +212,9 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
     // ─── Location Callbacks ──────────────────────────────────────────────
 
     override fun onLocationChanged(location: Location) {
-        AgentBridge.pushSignal("location.lat", location.latitude, 0.95f)
-        AgentBridge.pushSignal("location.lng", location.longitude, 0.95f)
-        AgentBridge.pushSignal("location.speed", location.speed.toDouble(), 0.9f)
+        tryPushSignal("location.lat", location.latitude, 0.95f)
+        tryPushSignal("location.lng", location.longitude, 0.95f)
+        tryPushSignal("location.speed", location.speed.toDouble(), 0.9f)
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -197,15 +229,15 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
         val minute = cal.get(Calendar.MINUTE)
         val timeValue = hour + minute / 60.0
 
-        AgentBridge.pushSignal("env.time_hour", timeValue, 1.0f)
+        tryPushSignal("env.time_hour", timeValue, 1.0f)
 
         // Late night detection
         if (hour >= 23 || hour < 5) {
-            AgentBridge.pushLabelSignal("env.period", "late_night", 0.95f)
+            tryPushLabelSignal("env.period", "late_night", 0.95f)
         } else if (hour in 6..9) {
-            AgentBridge.pushLabelSignal("env.period", "morning_commute", 0.8f)
+            tryPushLabelSignal("env.period", "morning_commute", 0.8f)
         } else if (hour in 17..19) {
-            AgentBridge.pushLabelSignal("env.period", "evening_commute", 0.8f)
+            tryPushLabelSignal("env.period", "evening_commute", 0.8f)
         }
     }
 
@@ -215,5 +247,114 @@ class ContextMonitorService : Service(), SensorEventListener, LocationListener {
         // - "usage.continuous_minutes" → how long user has been on phone
         // - "usage.foreground_app" → what category of app (maps, social, work)
         // This enables triggers like "user has been scrolling for 2 hours"
+    }
+
+    // ─── Safe Bridge Wrappers ───────────────────────────────────────────
+
+    private fun tryPushSignal(name: String, value: Double, confidence: Float) {
+        try {
+            AgentBridge.pushSignal(name, value, confidence)
+        } catch (_: UnsatisfiedLinkError) { /* native lib not loaded */ }
+          catch (_: Exception) { /* engine not ready */ }
+    }
+
+    private fun tryPushLabelSignal(name: String, label: String, confidence: Float) {
+        try {
+            AgentBridge.pushLabelSignal(name, label, confidence)
+        } catch (_: UnsatisfiedLinkError) { /* native lib not loaded */ }
+          catch (_: Exception) { /* engine not ready */ }
+    }
+
+    // ─── Demo Proactive Signal Loop ─────────────────────────────────────
+
+    private fun startDemoSignalLoop() {
+        serviceScope.launch {
+            delay(5_000) // Initial delay before first suggestion
+            while (isActive) {
+                val signal = demoSignals[demoSignalIndex % demoSignals.size]
+                demoSignalIndex++
+
+                withContext(Dispatchers.Main) {
+                    showProactiveCard(signal)
+                }
+
+                delay(30_000) // Every 30 seconds
+            }
+        }
+    }
+
+    private fun showProactiveCard(signal: ProactiveSignal) {
+        if (!Settings.canDrawOverlays(this)) return
+        dismissProactiveCard()
+
+        val inflater = LayoutInflater.from(this)
+        val cardView = inflater.inflate(R.layout.proactive_card, null)
+
+        val suggestionText = cardView.findViewById<TextView>(R.id.text_proactive_suggestion)
+        val btnAccept = cardView.findViewById<TextView>(R.id.btn_accept)
+        val btnDismiss = cardView.findViewById<TextView>(R.id.btn_dismiss)
+
+        suggestionText.text = signal.suggestion
+
+        btnAccept.setOnClickListener {
+            dismissProactiveCard()
+            // Send suggestion to ChatBubbleService
+            val chatIntent = Intent(this, ChatBubbleService::class.java).apply {
+                action = ChatBubbleService.ACTION_PROACTIVE_SUGGESTION
+                putExtra(ChatBubbleService.EXTRA_SUGGESTION, signal.suggestion)
+            }
+            startService(chatIntent)
+        }
+
+        btnDismiss.setOnClickListener {
+            dismissProactiveCard()
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = 160 // Above the floating ball area
+        }
+
+        windowManager?.addView(cardView, params)
+        proactiveCardView = cardView
+
+        // Animate in
+        cardView.alpha = 0f
+        cardView.translationY = -20f
+        cardView.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(250)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        // Auto-dismiss after 15 seconds if not interacted with
+        serviceScope.launch {
+            delay(15_000)
+            withContext(Dispatchers.Main) {
+                dismissProactiveCard()
+            }
+        }
+    }
+
+    private fun dismissProactiveCard() {
+        proactiveCardView?.let { view ->
+            view.animate()
+                .alpha(0f)
+                .translationY(-15f)
+                .setDuration(150)
+                .withEndAction {
+                    try { windowManager?.removeView(view) } catch (_: Exception) {}
+                }
+                .start()
+            proactiveCardView = null
+        }
     }
 }

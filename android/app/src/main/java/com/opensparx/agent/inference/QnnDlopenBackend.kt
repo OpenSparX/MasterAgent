@@ -75,7 +75,11 @@ class QnnDlopenBackend(private val context: Context) : InferenceBackend {
         GenerationResult(text, tokenCount, duration, speed, true)
     }
 
-    override fun cancelGeneration() { nativeQnnCancel() }
+    override fun cancelGeneration() {
+        if (initialized.get()) {
+            try { nativeQnnCancel() } catch (_: UnsatisfiedLinkError) {}
+        }
+    }
     override fun getLoad() = load
     override fun getSpeed() = speed
     override fun getKvCacheUsage() = kvUsage

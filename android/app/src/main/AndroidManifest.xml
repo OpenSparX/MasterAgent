@@ -17,9 +17,16 @@
     <!-- NPU inference needs wake lock for background processing -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Tool system: alarm/timer -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
     <!-- Internet for model download -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Camera for context sensing -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- Require Snapdragon NPU -->
     <uses-feature android:name="android.hardware.npu" android:required="false" />
@@ -27,11 +34,18 @@
     <application
         android:name=".AgentApplication"
         android:allowBackup="false"
+        android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.OpenSparX">
+
+        <!-- Onboarding (first launch) -->
+        <activity
+            android:name=".ui.OnboardingActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:exported="false" />
 
         <!-- Main entry point -->
         <activity
@@ -48,6 +62,42 @@
         <activity
             android:name=".ui.AgentPanelActivity"
             android:theme="@style/Theme.OpenSparX" />
+
+        <activity
+            android:name=".ui.ModelLibraryActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="Model Library" />
+
+        <activity
+            android:name=".ui.NpuSetupActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="NPU Setup" />
+
+        <activity
+            android:name=".ui.PlanExecutionActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="Agent Planning" />
+
+        <activity
+            android:name=".ui.TechShowcaseActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="Technology Showcase" />
+
+        <activity
+            android:name=".ui.ArchitectureActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="System Architecture" />
+
+        <activity
+            android:name=".ui.ContextSensingActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="Context Sensing" />
+
+        <activity
+            android:name=".ui.CockpitAgentActivity"
+            android:theme="@style/Theme.OpenSparX"
+            android:label="Cockpit Agent"
+            android:screenOrientation="portrait" />
 
         <!-- Floating widget service (desktop pet) -->
         <service

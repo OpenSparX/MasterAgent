@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Green left border -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#4CAF50" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <!-- Dark background, offset to reveal green left edge -->
+    <item android:left="4dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#1A1A2E" />
+            <corners
+                android:topRightRadius="12dp"
+                android:bottomRightRadius="12dp"
+                android:topLeftRadius="0dp"
+                android:bottomLeftRadius="0dp" />
+        </shape>
+    </item>
+</layer-list>

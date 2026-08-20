@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#E6101020"
+    android:padding="12dp">
+
+    <!-- Pipeline Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="⚙️ Agent Pipeline"
+            android:textColor="#00E676"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/text_pipeline_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0ms"
+            android:textColor="#888888"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Stage List (dynamically populated) -->
+    <LinearLayout
+        android:id="@+id/pipeline_stages_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+    <!-- Speculation indicator -->
+    <TextView
+        android:id="@+id/text_speculation_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:text="⚡ Speculation HIT"
+        android:textColor="#FFD600"
+        android:textSize="11sp"
+        android:layout_marginTop="4dp" />
+
+    <!-- Memory recall section -->
+    <TextView
+        android:id="@+id/text_memory_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:textColor="#80CBC4"
+        android:textSize="11sp"
+        android:layout_marginTop="4dp" />
+
+    <!-- Verification badge -->
+    <TextView
+        android:id="@+id/text_verification_badge"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:textColor="#00E676"
+        android:textSize="11sp"
+        android:layout_marginTop="4dp" />
+
+    <!-- Final summary -->
+    <TextView
+        android:id="@+id/text_pipeline_summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:layout_marginTop="8dp" />
+</LinearLayout>
