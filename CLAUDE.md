@@ -33,9 +33,17 @@ Full CLI (`sparx`) requires proprietary kernel source in `src/`.
 - `cli/src/sparx_*.cpp` — Strategic feature implementations
 - `cli/src/cmd_*.cpp` — CLI commands
 - `cli/src/llama_cpp_model_runtime.cpp` — llama-server adapter
+- `cli/src/sparx_pipeline_harness.cpp` — Edge-cloud pipeline orchestrator
+- `cli/src/sparx_prompt_engine.cpp` — Prompt compression for cloud dispatch
+- `cli/src/sparx_cloud_backend.cpp` — Cloud LLM HTTP client
+- `cli/src/sparx_arbiter.cpp` — Local arbitration logic
+- `cli/src/sparx_confidence_scorer.cpp` — Confidence-gated routing
+- `config/harness.yaml` — Edge-cloud pipeline configuration
+- `templates/` — Prompt templates (default, navigation, vehicle_control)
 - `tests/CMakeLists.txt` — Test target definitions
 - `VERSION.json` — Project version metadata
 - `ARCHITECTURE.md` — Full code map
+- `docs/edge_cloud_design.md` — Edge-cloud architecture design doc
 
 ## Git Workflow
 

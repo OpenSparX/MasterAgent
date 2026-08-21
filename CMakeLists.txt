@@ -344,6 +344,32 @@ elseif(MASTER_AGENT_BUILD_TESTS)
         endif()
         add_test(NAME bench_strategic COMMAND bench_strategic)
     endif()
+
+    # test_harness — edge-cloud pipeline harness
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tests/test_harness.cpp")
+        add_executable(test_harness
+            tests/test_harness.cpp
+            "${_cli_src}/sparx_pipeline_harness.cpp"
+            "${_cli_src}/sparx_prompt_engine.cpp"
+            "${_cli_src}/sparx_cloud_backend.cpp"
+            "${_cli_src}/sparx_arbiter.cpp"
+            "${_cli_src}/sparx_confidence_scorer.cpp")
+        target_compile_features(test_harness PRIVATE cxx_std_17)
+        target_include_directories(test_harness PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include" "${CMAKE_SOURCE_DIR}/third_party")
+        target_link_libraries(test_harness PRIVATE MasterAgent::Core)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            target_link_libraries(test_harness PRIVATE pthread)
+        endif()
+        find_package(CURL QUIET)
+        if(CURL_FOUND)
+            target_link_libraries(test_harness PRIVATE CURL::libcurl)
+            target_compile_definitions(test_harness PRIVATE SPARX_HAS_CURL=1)
+        else()
+            target_compile_definitions(test_harness PRIVATE SPARX_HAS_CURL=0)
+        endif()
+        add_test(NAME test_harness COMMAND test_harness)
+    endif()
 endif()
 
 add_subdirectory(eval)

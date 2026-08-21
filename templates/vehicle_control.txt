@@ -1,0 +1,4 @@
+Task: vehicle_control
+Command: {{query}}
+{{#params}}Params: {{params}}{{/params}}
+Confirm the action and state the result. One sentence.

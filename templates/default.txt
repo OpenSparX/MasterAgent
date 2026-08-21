@@ -1,0 +1,6 @@
+Task: {{task_type}}
+Query: {{query}}
+{{#params}}Parameters: {{params}}{{/params}}
+{{#history}}Recent context:
+{{history}}{{/history}}
+Respond concisely and actionably.
