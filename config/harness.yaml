@@ -26,7 +26,6 @@ harness:
 cloud:
   provider: "openai_compatible"      # openai_compatible | anthropic | custom
   endpoint: ""                       # 例: https://api.deepseek.com/v1/chat/completions
-  api_key: ""                        # 直接填写 API Key（不推荐，建议用 env var）
   api_key_env: "SPARX_CLOUD_KEY"    # 从环境变量读取 API Key（推荐）
   model: ""                          # 例: deepseek-chat, qwen-plus, gpt-4o-mini
   max_tokens: 2048                   # 云端最大输出 token 数
