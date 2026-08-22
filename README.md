@@ -89,6 +89,7 @@ Develop on CPU anywhere. Deploy to Qualcomm NPU for **14× speedup** at **3.5× 
 | Multi-device mesh | ✅ | ❌ | ❌ | ❌ |
 | Speculative execution | ✅ | ❌ | ❌ | ❌ |
 | On-device learning | ✅ | ❌ | ❌ | ❌ |
+| Edge-cloud arbitration | ✅ | ❌ | ❌ | ✅ |
 | NPU acceleration | ✅ | ❌ | ❌ | ✅ |
 | Latency (typical) | **87ms** | 2-5s | 3-10s | ~200ms |
 
@@ -142,6 +143,7 @@ OAK uses an **open-core** model. This repository contains:
 | Speculative Execution (LSTM + HNSW) | ✅ Full source | 2,565 |
 | Formal Plan Verification (CDCL SAT) | ✅ Full source | 3,656 |
 | Agent Mesh (mDNS + CRDT + Merkle) | ✅ Full source | 4,875 |
+| Edge-Cloud Harness (prompt compression + arbitration) | ✅ Full source | 2,411 |
 | On-Device Learning (DP-SGD) | ✅ Full source | 1,800+ |
 | Constrained Decoding (GBNF) | ✅ Full source | 1,200+ |
 | llama.cpp Model Runtime | ✅ Full source | 527 |
@@ -203,6 +205,104 @@ We're working toward open-sourcing the kernel runtime. Track progress in [#1](ht
 - **Crash-safe** — WAL (Write-Ahead Log) with three terminal states: `COMMITTED`, `FAILED`, `UNKNOWN`
 - **Hardware-agnostic** — same code runs on CPU (dev) and NPU (production)
 - **Speculate ahead** — predict user's next intent and pre-compute during idle time
+
+---
+
+## ☁️ Edge-Cloud Harness (Optional)
+
+On-device inference is the default. When a local model hits its ceiling, OAK can
+run a **second inference path in the cloud** and let a local arbiter pick the
+better answer. The cloud path is entirely optional — disable it and OAK stays 100%
+on-device.
+
+```
+                    Speculative cache miss
+                               │
+                               ▼
+                   ┌───────────────────────┐
+                   │  Confidence Pre-Score │
+                   └───────────┬───────────┘
+                               │
+          score ≥ 0.85 ────────┼──────── score < 0.85
+                 │                            │
+                 ▼                            ▼
+        ┌────────────────┐         ┌────────────────────┐
+        │  Local only    │         │   Prompt Engine    │
+        │  (save tokens) │         │  distill + prune   │
+        └────────┬───────┘         └─────────┬──────────┘
+                 │                            │ compressed (~60 tok)
+                 │                            ▼
+                 │                 ┌────────────────────┐
+                 │                 │  Cloud LLM (async) │
+                 │                 └─────────┬──────────┘
+                 │                            │
+                 │      ┌── Local Inference ──┤
+                 │      │   (runs in parallel)│
+                 ▼      ▼                     ▼
+        ┌──────────────────────────────────────────────┐
+        │        Arbiter — picks the final answer       │
+        │  cloud_prefer │ latency_first │ confidence    │
+        └──────────────────────┬───────────────────────┘
+                               ▼
+                          Final Output
+```
+
+**Four design principles:**
+
+| Principle | How it works |
+|:---|:---|
+| **Token-friendly** | The local Prompt Engine distills intent and prunes history *before* the cloud call. A 1,300-token context compresses to ~60 tokens. |
+| **Boundary intelligence** | Cloud fires only when local confidence is low — precisely where the on-device model falls short. High-confidence requests never leave the device. |
+| **Efficiency-first** | The cloud call is async and never blocks local inference. A hard per-intent deadline (200ms for vehicle control, 3s for open Q&A) means a slow cloud is simply ignored. |
+| **Pluggable** | Every component is an interface, activated by config. Swap the arbiter, prompt engine, or cloud provider without touching code. |
+
+### Configuration
+
+Set your endpoint in `config/harness.yaml` and pass the key via environment variable:
+
+```yaml
+harness:
+  cloud_enabled: true
+  prompt_engine: "compressed"        # compressed | verbose
+  arbiter: "cloud_prefer"            # cloud_prefer | latency_first | confidence | local_only
+
+cloud:
+  provider: "openai_compatible"      # works with DeepSeek, Qwen, vLLM, Ollama, OpenAI
+  endpoint: "https://api.deepseek.com/v1/chat/completions"
+  api_key_env: "SPARX_CLOUD_KEY"    # read from env, never committed
+  model: "deepseek-chat"
+  timeout_ms: 3000
+
+confidence:
+  high_threshold: 0.85               # above: local only, skip cloud
+  low_threshold: 0.4                 # below: cloud primary, local fallback
+```
+
+```bash
+export SPARX_CLOUD_KEY="your-key-here"
+```
+
+### Pluggable Slots
+
+```cpp
+PipelineHarness harness;
+harness.registerPromptEngine("compressed", std::make_shared<CompressedPromptEngine>(cfg));
+harness.registerCloudBackend("openai_compatible", createCloudBackend(cloud_cfg));
+harness.registerArbiter("cloud_prefer", std::make_shared<CloudPreferArbiter>(arb_cfg));
+harness.registerConfidenceScorer("heuristic", std::make_shared<HeuristicScorer>());
+harness.registerLocalInference("llama_cpp", local_runtime);
+harness.loadConfig("config/harness.yaml");
+
+auto response = harness.execute(request);
+// response.result.source  → Local | Cloud | Fallback
+// response.result.reason   → why this path won
+// response.cloud_input_tokens → what the cloud call actually cost
+```
+
+Every decision is traceable: which path won, why, latency per path, and token spend.
+
+> 📖 Full design rationale, module breakdown, and extension points:
+> **[docs/edge_cloud_design.md](docs/edge_cloud_design.md)**
 
 ---
 
@@ -421,8 +521,15 @@ MasterAgent/
 │   │   ├── sparx_formal_verify.h    # CTL* model checker
 │   │   ├── sparx_mesh.h             # Agent mesh protocol
 │   │   ├── sparx_learning.h         # Continual learning
-│   │   └── sparx_constrained_decode.h
-│   └── src/                # Implementations (~5,500 LOC strategic features)
+│   │   ├── sparx_constrained_decode.h
+│   │   ├── sparx_pipeline_harness.h # Edge-cloud orchestrator
+│   │   ├── sparx_prompt_engine.h    # Prompt compression
+│   │   ├── sparx_cloud_backend.h    # Cloud LLM client
+│   │   ├── sparx_arbiter.h          # Local arbitration
+│   │   └── sparx_confidence_scorer.h
+│   └── src/                # Implementations (~8,000 LOC strategic features)
+├── config/harness.yaml     # Edge-cloud pipeline configuration
+├── templates/              # Prompt templates for cloud dispatch
 ├── include/master_agent/   # Core kernel API
 │   ├── orchestrator/       # DAG task execution
 │   ├── inference/          # Model runtime abstraction
@@ -460,6 +567,7 @@ See [docs/ROADMAP_v3.md](docs/ROADMAP_v3.md) for the full plan.
 | Doc | Description |
 |:---|:---|
 | [System Overview](docs/SYSTEM_OVERVIEW.md) | Architecture deep-dive |
+| [Edge-Cloud Design](docs/edge_cloud_design.md) | Dual-path inference + arbitration (端云融合) |
 | [Build & Test](docs/BUILD_AND_TEST.md) | Compilation from source |
 | [WAL Recovery](docs/WAL_RECOVERY.md) | Crash recovery mechanism |
 | [MCP Services](docs/MCP_SERVICES.md) | Adding custom tool capabilities |
@@ -639,6 +747,43 @@ Agent 崩溃时不盲目重试（重复扣费），不静默忽略（钱丢了�
 
 你的数据永远不离开设备。用得越多，越懂你。
 
+### ☁️ 端云融合 — 可选的第二条推理链路
+
+端侧推理是默认路径。当本地模型能力触顶时，OAK 可以并发发起一路云端推理，
+由本地仲裁层选取更优结果。云端链路完全可选，关掉就是 100% 端侧。
+
+**四条设计原则：**
+
+| 原则 | 实现方式 |
+|:---|:---|
+| **Token 友好** | 本地 Prompt Engine 先做意图蒸馏 + 上下文剪枝再上云。1300 token 的上下文压缩到约 60 token。 |
+| **边界智能最大化** | 只在本地置信度低时才触发云端——正是端侧模型力不从心的地方。高置信请求根本不出设备。 |
+| **效率优先** | 云端调用异步非阻塞，绝不拖慢端侧。按意图设硬 deadline（车控 200ms，开放问答 3s），云端慢了就直接忽略。 |
+| **可插拔** | 所有组件都是接口，配置驱动激活。换仲裁器、换提示词引擎、换云厂商都不用改代码。 |
+
+**配置方式**（`config/harness.yaml`）：
+
+```yaml
+harness:
+  cloud_enabled: true
+  arbiter: "cloud_prefer"        # cloud_prefer | latency_first | confidence | local_only
+
+cloud:
+  provider: "openai_compatible"  # 兼容 DeepSeek / Qwen / vLLM / Ollama / OpenAI
+  endpoint: "https://api.deepseek.com/v1/chat/completions"
+  api_key_env: "SPARX_CLOUD_KEY" # 从环境变量读取，不进仓库
+  model: "deepseek-chat"
+  timeout_ms: 3000
+
+confidence:
+  high_threshold: 0.85           # 高于此值：本地直出，不调云端
+  low_threshold: 0.4             # 低于此值：云端优先，本地兜底
+```
+
+每次决策都可追溯：哪条路赢了、为什么赢、各路耗时、云端 token 花了多少。
+
+详见 **[端云融合架构设计](docs/edge_cloud_design.md)**。
+
 ### 📚 更多特性
 
 | 特性 | 说明 |
@@ -685,6 +830,7 @@ Agent 崩溃时不盲目重试（重复扣费），不静默忽略（钱丢了�
 ## 📚 文档
 
 - [系统概述](docs/01_系统概述.md)
+- [端云融合架构设计](docs/edge_cloud_design.md)
 - [构建和测试](docs/10_构建运行与测试.md)
 - [WAL 恢复机制](docs/WAL_RECOVERY_zh-CN.md)
 - [MCP 服务开发](docs/MCP_SERVICES_zh-CN.md)
