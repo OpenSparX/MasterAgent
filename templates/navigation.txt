@@ -1,0 +1,5 @@
+Task: navigation
+Query: {{query}}
+{{#params}}Route params: {{params}}{{/params}}
+{{#history}}Context: {{history}}{{/history}}
+Provide: destination, route suggestions, or POI info. Be brief.

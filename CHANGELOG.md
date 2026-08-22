@@ -5,6 +5,20 @@ All notable changes to OAK (Open Agent Kernel) will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Edge-Cloud Pipeline Harness — pluggable dual-path inference architecture
+  - `IPromptEngine`: prompt compression + intent distillation before cloud dispatch
+  - `ICloudBackend`: async cloud LLM client (OpenAI-compatible)
+  - `IArbiter`: local arbitration (cloud_prefer / latency_first / confidence)
+  - `IConfidenceScorer`: two-phase confidence gating (pre-score + post-score)
+  - `PipelineHarness`: top-level orchestrator with component registry
+- Configuration: `config/harness.yaml` for edge-cloud pipeline settings
+- Prompt templates: `templates/` directory with default, navigation, vehicle_control
+- Test suite: `test_harness` with 15 unit tests covering all harness components
+- Design documentation: `docs/edge_cloud_design.md`
+
 ## [0.3.0] - 2026-08-21
 
 ### Added

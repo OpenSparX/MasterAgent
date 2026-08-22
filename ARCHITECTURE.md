@@ -34,8 +34,15 @@ OAK/
 │   │   ├── sparx_delta_crdt.cpp       # Delta-state CRDT (OR-Set, LWW, GCounter)
 │   │   ├── sparx_learning.cpp         # DP-SGD on-device fine-tuning
 │   │   ├── sparx_constrained_decode.cpp  # GBNF grammar enforcement
-│   │   ├── sparx_cloud_fusion.cpp     # Cloud/edge inference routing
+│   │   ├── sparx_cloud_fusion.cpp     # Cloud/edge inference routing (legacy)
 │   │   ├── sparx_trace.cpp            # Distributed tracing
+│   │   │
+│   │   ├── # ─── Edge-Cloud Harness (端云融合) ───
+│   │   ├── sparx_pipeline_harness.cpp # Pluggable pipeline orchestrator
+│   │   ├── sparx_prompt_engine.cpp    # Prompt compression + intent distillation
+│   │   ├── sparx_cloud_backend.cpp    # Cloud LLM HTTP client (OpenAI compat)
+│   │   ├── sparx_arbiter.cpp          # Local arbitration (cloud_prefer/latency/confidence)
+│   │   ├── sparx_confidence_scorer.cpp # Confidence-gated routing
 │   │   │
 │   │   ├── # ─── Model Runtime Adapters ───
 │   │   ├── llama_cpp_model_runtime.cpp   # llama-server HTTP adapter
@@ -111,6 +118,18 @@ OAK/
      ┌──────────────────────────────────────────────────┐
      │         Kernel API (include/master_agent/)        │
      │         IOrchestrator, IModelRuntime, types       │
+     └──────────────────────────────────────────────────┘
+
+     ┌──────────────────────────────────────────────────┐
+     │     Edge-Cloud Pipeline Harness (harness/)        │
+     │                                                   │
+     │  IPromptEngine ─→ ICloudBackend                  │
+     │       │                  │                        │
+     │       ▼                  ▼                        │
+     │  IConfidenceScorer ──→ IArbiter ──→ Output       │
+     │       ▲                                          │
+     │       │                                          │
+     │  ILocalInference (wraps Model Runtime)           │
      └──────────────────────────────────────────────────┘
 ```
 

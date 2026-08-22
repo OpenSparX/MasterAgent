@@ -1,0 +1,65 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# OAK Edge-Cloud Pipeline Harness Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This file configures the dual-path (edge + cloud) inference pipeline.
+# All components are pluggable — change the name to switch implementations.
+#
+# 文件说明：端云双链路推理管线配置
+# 所有组件可插拔，修改名称即可切换实现。
+
+# ─── Pipeline Slot Configuration ─────────────────────────────────────────────
+harness:
+  prompt_engine: "compressed"        # compressed | verbose
+  cloud_backend: "openai_compatible" # openai_compatible | mock
+  arbiter: "cloud_prefer"            # cloud_prefer | latency_first | confidence | local_only
+  confidence_scorer: "heuristic"     # heuristic
+  cloud_enabled: true                # Master switch for cloud path
+  trace_decisions: false             # Log every routing/arbitration decision
+
+# ─── Cloud Backend Configuration ─────────────────────────────────────────────
+# 填写你的云端 API 信息。支持所有 OpenAI 兼容格式的 API：
+#   - OpenAI, Azure OpenAI
+#   - DeepSeek, Qwen/DashScope
+#   - vLLM, Ollama (本地部署)
+#   - 任何 /v1/chat/completions 兼容端点
+cloud:
+  provider: "openai_compatible"      # openai_compatible | anthropic | custom
+  endpoint: ""                       # 例: https://api.deepseek.com/v1/chat/completions
+  api_key_env: "SPARX_CLOUD_KEY"    # 从环境变量读取 API Key（推荐）
+  model: ""                          # 例: deepseek-chat, qwen-plus, gpt-4o-mini
+  max_tokens: 2048                   # 云端最大输出 token 数
+  temperature: 0.7                   # 采样温度
+  timeout_ms: 3000                   # HTTP 超时（毫秒），座舱场景建议 ≤3000
+
+# ─── Prompt Engine Configuration ─────────────────────────────────────────────
+# 控制上云前的提示词压缩策略。
+# 目标：将原始 1000+ token 的上下文压缩到 <500 token，节省云端费用。
+prompt:
+  max_cloud_input_tokens: 500        # 云端输入 token 预算
+  max_history_turns: 3               # 保留的对话历史轮数（剪枝后）
+  relevance_threshold: 0.3           # 历史相关性阈值（低于此值丢弃）
+  template_dir: "templates"          # 模板目录路径
+  default_template: "default"        # 默认模板名（不含扩展名）
+
+# ─── Arbiter Configuration ───────────────────────────────────────────────────
+# 仲裁器：当端侧和云端结果都返回时，如何选择。
+arbiter_config:
+  strategy: "cloud_prefer"           # 默认策略
+  deadline_ms: 3000                  # 全局 deadline（端+云总时间上限）
+  confidence_gap_threshold: 0.15     # confidence 策略下最小差距阈值
+
+  # Per-intent deadline overrides（按意图类型覆盖 deadline）:
+  # vehicle_control: 200             # 车控指令：200ms 内必须响应
+  # navigation: 500                  # 导航：500ms
+  # media: 300                       # 媒体控制：300ms
+  # general_qa: 3000                 # 开放问答：可以等
+
+# ─── Confidence Thresholds ───────────────────────────────────────────────────
+# 置信度门控：决定何时触发云端链路。
+#   score > high → 直接用本地结果，不调云端（省 token）
+#   low < score < high → 端云并发，仲裁选优
+#   score < low → 云端优先，本地做 fallback
+confidence:
+  high_threshold: 0.85               # 高置信度阈值
+  low_threshold: 0.4                 # 低置信度阈值
