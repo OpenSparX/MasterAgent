@@ -14,15 +14,13 @@ env:
 jobs:
   build-release:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: linux-x64
             artifact: sparx
-          - os: macos-13
-            target: macos-x64
-            artifact: sparx
-          - os: macos-14
+          - os: macos-latest
             target: macos-arm64
             artifact: sparx
             cmake_flags: "-DCMAKE_OSX_ARCHITECTURES=arm64"
@@ -59,7 +57,14 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp build/cli/sparx dist/
+          # The sparx CLI requires the proprietary kernel; in OSS builds it is
+          # absent. Package whatever binaries the build produced.
+          if [ -f build/cli/sparx ]; then
+            cp build/cli/sparx dist/
+          fi
+          for bin in build/bench_strategic build/eval_*; do
+            [ -f "$bin" ] && cp "$bin" dist/ || true
+          done
           cp README.md LICENSE dist/
           cd dist && tar czf ../sparx-${{ matrix.target }}.tar.gz .
 
@@ -76,7 +81,7 @@ jobs:
 
   create-release:
     needs: build-release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 

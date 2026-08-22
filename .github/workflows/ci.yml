@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'feat/**', 'fix/**']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 env:
   BUILD_TYPE: Release
@@ -14,13 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-14]
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             cmake_flags: ""
-          - os: macos-13
-            cmake_flags: ""
-          - os: macos-14
+          - os: macos-latest
             cmake_flags: "-DCMAKE_OSX_ARCHITECTURES=arm64"
 
     runs-on: ${{ matrix.os }}
@@ -52,38 +49,40 @@ jobs:
         run: ctest --output-on-failure --timeout 120
 
       - name: Upload build artifacts
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: sparx-linux-x64
           path: build/cli/sparx
           retention-days: 7
+          if-no-files-found: ignore
 
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install clang-tidy
-        run: sudo apt-get install -y clang-tidy-15
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy
 
       - name: Run clang-tidy on Agent OS modules
         run: |
-          clang-tidy-15 \
-            -p build \
+          clang-tidy \
             --checks='-*,bugprone-*,performance-*,modernize-*,-modernize-use-trailing-return-type' \
             cli/src/sparx_agent_scheduler.cpp \
             cli/src/sparx_context_manager.cpp \
             cli/src/sparx_memory_manager.cpp \
             cli/src/sparx_access_control.cpp \
             cli/src/sparx_tool_registry.cpp \
-            -- -std=c++17 -Icli/include -Isrc/include \
+            -- -std=c++17 -Icli/include -Iinclude \
                -Ithird_party/memory_short_term/include \
                -Ithird_party \
             || true  # Non-blocking for now
 
   security-check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
