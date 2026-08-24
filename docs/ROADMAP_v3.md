@@ -59,7 +59,7 @@ For scenarios without WiFi (automotive, industrial, wearables):
 ### 3.2.2 Adaptive Merkle Granularity
 - Auto-tune branching factor based on state size
 - Hot-key detection: frequently-changing keys get finer buckets
-- Tombstone compaction with crdt-safe garbage collection
+- Tombstone compaction with CRDT-safe garbage collection
 
 ### 3.2.3 Speculation Observability
 - OpenTelemetry traces for speculation lifecycle
