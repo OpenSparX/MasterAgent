@@ -292,7 +292,7 @@ Merkle: roots match (no divergence)
                                   required (sparx reconcile)
 ```
 
-Other frameworks retry (duplicate charges) or ignore (lost money). OAK is honest.
+Other frameworks retry (causing duplicate charges) or ignore the failure (losing money). OAK is honest.
 
 ### 🧬 On-Device Continual Learning
 
