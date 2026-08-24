@@ -1,0 +1,45 @@
+api_version: masteragent.ai/v1alpha1
+kind: ConfigTestSuite
+metadata:
+  id: intent-json-protocol
+  version: 1
+
+spec:
+  cases:
+    - id: protocol.reply
+      model_output:
+        type: Reply
+        reply: 这是一个仅回复结果
+      expect:
+        schema_valid: true
+        executable_action_count: 0
+
+    - id: protocol.reject_unknown_capability
+      model_output:
+        type: ExecutionPlan
+        reply: 准备执行
+        actions:
+          - id: unknown-action
+            type: CallTool
+            capability: made.up.capability
+            arguments: {}
+      expect:
+        schema_valid: true
+        local_validation: rejected
+        error_code: CAPABILITY_NOT_REGISTERED
+
+    - id: protocol.reject_free_text_execution_claim
+      model_output: 已经替你打开空调
+      expect:
+        schema_valid: false
+        executable_action_count: 0
+
+    - id: protocol.reject_structured_execution_claim
+      model_output:
+        type: Reply
+        reply: 车内温度和风量已经调整到更舒适的水平
+      expect:
+        schema_valid: true
+        local_validation: rejected
+        error_code: INTENT_MODEL_FALSE_EXECUTION_CLAIM
+        executable_action_count: 0

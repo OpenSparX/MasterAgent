@@ -1,0 +1,32 @@
+api_version: masteragent.ai/v1alpha1
+kind: ModelProfile
+metadata:
+  id: model.cloud.intent.fake
+  version: 1
+  display_name: 假云端意图模型
+
+spec:
+  enabled: false
+  role: intent
+  location: cloud
+  reality: simulated_cloud
+  runtime:
+    type: fake_cloud
+  inference:
+    max_input_tokens: 4096
+    max_output_tokens: 1024
+    temperature: 0
+    streaming: false
+  protocol:
+    prompt_profile: prompts/intent-system.md
+    output_schema: prompts/decision-protocol.schema.json
+    response_format: json_object
+  limits:
+    timeout_ms: 5000
+    max_concurrency: 1
+  privacy:
+    accepted_data_classes: [current_turn, intent_summary, public_configuration, allowlisted_vehicle_state]
+  activation:
+    allowed_profiles: [development, test]
+    production_allowed: false
+  note: 与当前 --fake-cloud 开发闭环对齐，默认关闭；需同时启用 ModelProfile 和 cloud_fallback policy 才能由配置选择。

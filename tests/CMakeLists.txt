@@ -25,6 +25,20 @@ add_master_agent_test(test_prompt_skill test_prompt_skill.cpp)
 add_master_agent_test(test_preprocess test_preprocess.cpp)
 add_master_agent_test(test_agent_dispatch_control
     test_agent_dispatch_control.cpp)
+add_master_agent_test(test_config_bundle test_config_bundle.cpp)
+target_compile_definitions(test_config_bundle PRIVATE
+    MASTER_AGENT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+# The official MasterAgent config bundle is a versioned product contract.
+# Validate it in CTest when the host has Ruby; runtime binaries do not depend
+# on Ruby, and platforms without it still build and run the C++ suite.
+find_program(MASTER_AGENT_RUBY_EXECUTABLE ruby)
+if(MASTER_AGENT_RUBY_EXECUTABLE)
+    add_test(NAME test_agent_config_contract
+        COMMAND "${MASTER_AGENT_RUBY_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/scripts/validate_agent_config.rb"
+            "${CMAKE_SOURCE_DIR}/agent-config")
+endif()
 
 # Compile and execute the colleague-owned L1 short-term memory test without
 # changing its source. Only the target wiring belongs to MasterAgent.

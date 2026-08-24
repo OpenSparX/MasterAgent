@@ -1,0 +1,57 @@
+api_version: masteragent.ai/v1alpha1
+kind: MasterAgentConfigBundle
+
+metadata:
+  name: official-automotive-default
+  display_name: MasterAgent 官方车载配置
+  version: 0.1.0
+  description: 当前开源参考运行时的最小、真实、可审计配置基线。
+  license: Apache-2.0
+
+spec:
+  resources:
+    rules: rules/*.yaml
+    skills: skills/*.yaml
+    capabilities: capabilities/*.yaml
+    context_sources: context_sources/*.yaml
+    agents: agents/*.yaml
+    models: models/*.yaml
+    policies: policies/*.yaml
+    prompts: prompts/
+    tests: tests/*.yaml
+    schemas: schemas/*.schema.json
+
+  compatibility:
+    masteragent: ">=2.0.0 <3.0.0"
+    config_api: v1alpha1
+    profile: automotive-reference
+
+  activation:
+    mode: atomic
+    validate_before_activate: true
+    reject_unknown_fields: true
+    rollback_on_failure: true
+    freeze_snapshot_per_request: true
+
+  defaults:
+    locale: zh-CN
+    rule_catalog: official-rules
+    skill_catalog: official-skills
+    capability_catalog: official-capabilities
+    context_source_catalog: official-context-sources
+    agent_catalog: official-agents
+    model_routing: official-model-routing
+    policy_catalog: official-policies
+    observability_policy: official-observability
+    intent_prompt: prompts/intent-system.md
+    decision_protocol: prompts/decision-protocol.schema.json
+
+  integrity:
+    digest_algorithm: sha256
+    signature_required: false
+    signature_required_for_production: true
+
+  migration:
+    legacy_skill_index: ../config/skill/skills_index.json
+    legacy_prompt_templates: ../config/prompt/templates.json
+    runtime_loading_status: declarative_baseline

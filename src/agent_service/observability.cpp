@@ -7,14 +7,44 @@
 #include "include/capability_policy.h"
 #include "include/client_error_sanitization.h"
 
+#include <filesystem>
+#include <fstream>
+
+#include <nlohmann/json.hpp>
+
 namespace master_agent::agent_service {
+
+void AgentService::debugEvent(
+    const interaction::StandardRequest& request,
+    const std::string& event_type, const std::string& stage,
+    const std::string& payload_json) {
+    if (local_debug_artifact_path_.empty()) return;
+    try {
+        auto payload = nlohmann::json::parse(payload_json);
+        std::lock_guard<std::mutex> lock(debug_artifact_mutex_);
+        std::filesystem::create_directories(
+            local_debug_artifact_path_.parent_path());
+        std::ofstream output(local_debug_artifact_path_,
+                             std::ios::binary | std::ios::app);
+        output << nlohmann::json{
+            {"debug_schema", "masteragent.local-debug/v1"},
+            {"event_type", event_type}, {"stage", stage},
+            {"trace_id", request.trace_id},
+            {"request_id", request.request_id},
+            {"payload", std::move(payload)}}.dump() << '\n';
+        output.flush();
+    } catch (...) {
+        // Debug artifacts are non-authoritative and cannot fail a turn.
+    }
+}
 
 void AgentService::logEvent(
     const interaction::StandardRequest& request,
     const std::string& event_type, const std::string& operation,
     const std::string& outcome, data_log::EventSeverity severity,
     data_log::DurabilityClass durability, const std::string& plan_id,
-    const std::string& error_ref) {
+    const std::string& error_ref,
+    const std::string& payload_summary_json) {
 
     std::lock_guard<std::mutex> producer_lock(
         log_producer_mutex_);
@@ -44,8 +74,10 @@ void AgentService::logEvent(
     event.occurred_at_mono_ns = clock_->monotonicNowNs();
     event.severity = severity;
     event.requested_durability = durability;
-    event.payload_summary_json =
-        "{\"content\":\"redacted\",\"request_linked\":true}";
+    event.privacy_labels = {"TRACE_METADATA"};
+    event.payload_summary_json = payload_summary_json == "{}"
+        ? "{\"content\":\"redacted\",\"request_linked\":true}"
+        : payload_summary_json;
     data_log::LogEventBatch batch;
     batch.batch_id = ids_->next("log-batch");
     batch.producer_endpoint_id = event.context.producer_endpoint_id;

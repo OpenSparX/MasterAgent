@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://masteragent.ai/schema/decision-protocol-v1alpha1.json",
+  "title": "MasterAgent Candidate Decision",
+  "oneOf": [
+    {"$ref": "#/$defs/reply"},
+    {"$ref": "#/$defs/ask"},
+    {"$ref": "#/$defs/queryBatch"},
+    {"$ref": "#/$defs/executionPlan"},
+    {"$ref": "#/$defs/requestCloud"},
+    {"$ref": "#/$defs/fail"}
+  ],
+  "$defs": {
+    "reply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reply"],
+      "properties": {"type": {"const": "Reply"}, "reply": {"type": "string", "minLength": 1, "maxLength": 4096}}
+    },
+    "ask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "slot", "reply"],
+      "properties": {"type": {"const": "Ask"}, "slot": {"type": "string", "minLength": 1}, "reply": {"type": "string", "minLength": 1, "maxLength": 1024}}
+    },
+    "queryBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "queries"],
+      "properties": {
+        "type": {"const": "QueryBatch"},
+        "queries": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/query"}}
+      }
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "context_source", "arguments"],
+      "properties": {"id": {"type": "string", "minLength": 1}, "context_source": {"type": "string", "minLength": 1}, "arguments": {"type": "object"}}
+    },
+    "executionPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reply", "actions"],
+      "properties": {
+        "type": {"const": "ExecutionPlan"},
+        "reply": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "actions": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/action"}}
+      }
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "type", "capability", "arguments"],
+          "properties": {"id": {"type": "string"}, "type": {"const": "CallTool"}, "capability": {"type": "string"}, "arguments": {"type": "object"}, "depends_on": {"type": "array", "items": {"type": "string"}}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "type", "agent", "action", "arguments"],
+          "properties": {"id": {"type": "string"}, "type": {"const": "DispatchAgent"}, "agent": {"type": "string"}, "action": {"type": "string"}, "arguments": {"type": "object"}, "depends_on": {"type": "array", "items": {"type": "string"}}}
+        }
+      ]
+    },
+    "requestCloud": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reason_code", "requested_context_sources"],
+      "properties": {"type": {"const": "RequestCloud"}, "reason_code": {"type": "string", "minLength": 1}, "requested_context_sources": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}
+    },
+    "fail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reason_code", "reply"],
+      "properties": {"type": {"const": "Fail"}, "reason_code": {"type": "string", "minLength": 1}, "reply": {"type": "string", "minLength": 1, "maxLength": 1024}}
+    }
+  }
+}
+

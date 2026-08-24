@@ -1,0 +1,40 @@
+api_version: masteragent.ai/v1alpha1
+kind: ConfigTestSuite
+metadata:
+  id: cloud-request-contract
+  version: 1
+
+spec:
+  cases:
+    - id: cloud.default_denied
+      request:
+        type: RequestCloud
+        reason_code: COMPLEX_REASONING_REQUIRED
+        requested_context_sources: []
+      policy_overrides: {}
+      expect:
+        cloud_allowed: false
+
+    - id: cloud.reject_unknown_reason
+      request:
+        type: RequestCloud
+        reason_code: MODEL_WANTS_MORE_POWER
+        requested_context_sources: []
+      expect:
+        local_validation: rejected
+        error_code: CLOUD_REASON_NOT_ALLOWED
+
+    - id: cloud.response_returns_to_local_validator
+      request:
+        type: RequestCloud
+        reason_code: LOCAL_CAPABILITY_INSUFFICIENT
+        requested_context_sources: [state.vehicle]
+      policy_overrides:
+        cloud.enabled: true
+        cloud.consent_preapproved: true
+      cloud_output:
+        type: Reply
+        reply: 云端候选结果仍需本地校验
+      expect:
+        final_validator: local
+        direct_cloud_execution: false

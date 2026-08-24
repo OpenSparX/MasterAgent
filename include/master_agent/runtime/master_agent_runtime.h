@@ -30,6 +30,21 @@
 
 namespace master_agent::runtime {
 
+struct MasterAgentRuntimeOptions {
+    std::shared_ptr<IRuntimeClock> clock;
+    std::shared_ptr<inference::IModelRuntime> model_runtime;
+    /// Stable ModelProfile ID bound into inference admission and invocation
+    /// digests. The legacy no-config path keeps its historical default.
+    std::string intent_model_profile_id = "mock-master-agent";
+    std::string config_snapshot_id = "runtime-default";
+    /// Explicit local-only raw debug artifact directory. Empty disables it.
+    std::filesystem::path local_debug_artifact_directory;
+    std::uint32_t simulated_work_units = 1;
+    /// Explicit development switch. Production cloud transport is not yet
+    /// implemented; this enables the deterministic offline cloud simulator.
+    bool enable_fake_cloud_fallback = false;
+};
+
 /**
  * @brief Owns and wires every module in the default deployment.
  *
@@ -54,6 +69,10 @@ public:
         const std::filesystem::path& runtime_directory,
         std::shared_ptr<IRuntimeClock> clock = nullptr,
         std::uint32_t simulated_work_units = 1);
+
+    static Result<std::shared_ptr<MasterAgentRuntime>> create(
+        const std::filesystem::path& runtime_directory,
+        MasterAgentRuntimeOptions options);
 
     ~MasterAgentRuntime();
 
@@ -90,7 +109,8 @@ public:
     std::shared_ptr<exception::ExceptionManager> exceptions() const;
     std::shared_ptr<atomic_service::DeterministicClimateProvider>
     climateProvider() const;
-    std::shared_ptr<inference::MockModelRuntime> modelRuntime() const;
+    std::shared_ptr<inference::IModelRuntime> modelRuntime() const;
+    std::shared_ptr<inference::MockModelRuntime> mockModelRuntime() const;
 
 private:
     MasterAgentRuntime() = default;
@@ -101,7 +121,7 @@ private:
     std::shared_ptr<preprocess::PreprocessEngine> preprocess_;
     std::shared_ptr<memory::MemoryService> memory_;
     std::shared_ptr<kv_cache::KvCacheManager> kv_cache_;
-    std::shared_ptr<inference::MockModelRuntime> model_runtime_;
+    std::shared_ptr<inference::IModelRuntime> model_runtime_;
     std::shared_ptr<inference::InferenceFramework> inference_;
     std::shared_ptr<atomic_service::DeterministicClimateProvider>
         climate_provider_;

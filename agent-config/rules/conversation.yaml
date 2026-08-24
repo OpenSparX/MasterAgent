@@ -1,0 +1,32 @@
+api_version: masteragent.ai/v1alpha1
+kind: RuleSet
+metadata:
+  id: official-conversation-rules
+  version: 1
+  domain: conversation
+
+spec:
+  conflict_policy: longest_match_then_priority
+  rules:
+    - id: conversation.greeting
+      version: 1
+      enabled: true
+      priority: 100
+      match:
+        type: exact
+        patterns: [你好, 您好, hello, hi]
+      decision:
+        type: Reply
+        reply: 你好，有什么可以帮你？
+
+    - id: conversation.thanks
+      version: 1
+      enabled: true
+      priority: 100
+      match:
+        type: exact
+        patterns: [谢谢, 感谢]
+      decision:
+        type: Reply
+        reply: 不客气。
+

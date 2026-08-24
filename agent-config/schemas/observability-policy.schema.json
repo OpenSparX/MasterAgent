@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://masteragent.ai/schemas/observability-policy.schema.json",
+  "title": "MasterAgent ObservabilityPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "kind", "metadata", "spec"],
+  "properties": {
+    "api_version": { "const": "masteragent.ai/v1alpha1" },
+    "kind": { "const": "ObservabilityPolicy" },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["enabled", "mode", "trace", "payloads", "storage"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "enum": ["safe", "local-debug", "audit"] },
+        "trace": { "type": "object" },
+        "payloads": { "type": "object" },
+        "storage": { "type": "object" },
+        "viewer": { "type": "object" },
+        "exporters": { "type": "object" }
+      }
+    }
+  }
+}
+

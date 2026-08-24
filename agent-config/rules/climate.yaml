@@ -1,0 +1,72 @@
+api_version: masteragent.ai/v1alpha1
+kind: RuleSet
+metadata:
+  id: official-rules
+  version: 1
+  domain: climate
+
+spec:
+  conflict_policy: reject_ambiguous
+  rules:
+    - id: climate.set_air_circulation
+      version: 1
+      enabled: true
+      priority: 200
+      match:
+        type: intent_pattern
+        patterns: [内循环, 外循环, 自动循环]
+      slots:
+        mode:
+          type: enum
+          required: true
+          mappings:
+            INTERNAL: [内循环]
+            EXTERNAL: [外循环]
+            AUTO: [自动循环, 循环自动]
+      on_missing:
+        decision: Ask
+        slot: mode
+        reply: 请问要设置为内循环、外循环还是自动循环？
+      decision:
+        type: ExecutionPlan
+        actions:
+          - type: CallTool
+            capability: climate.set_air_circulation_mode
+            arguments:
+              mode: "${slots.mode}"
+
+    - id: climate.set_auto_fan_speed
+      version: 1
+      enabled: true
+      priority: 190
+      match:
+        type: intent_pattern
+        patterns: [风速, 风量]
+      slots:
+        location:
+          type: enum
+          required: false
+          default: FRONT
+          mappings:
+            FRONT: [前排, 前面]
+            REAR: [后排, 后面]
+        mode:
+          type: enum
+          required: true
+          mappings:
+            LOW: [低, 小一点, LOW]
+            NORMAL: [正常, 中, NORMAL]
+            HIGH: [高, 大一点, HIGH]
+      on_missing:
+        decision: Ask
+        slot: mode
+        reply: 请问自动风速要设置为低、正常还是高？
+      decision:
+        type: ExecutionPlan
+        actions:
+          - type: CallTool
+            capability: climate.set_auto_fan_speed
+            arguments:
+              location: "${slots.location}"
+              mode: "${slots.mode}"
+

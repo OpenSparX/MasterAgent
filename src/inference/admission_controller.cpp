@@ -62,7 +62,11 @@ InferenceAcceptance InferenceFramework::submitInference(
                     lineage_status.error.code};
         }
     }
-    if (request.reality != "SIMULATED") {
+    const auto runtime_reality =
+        runtime_->runtimeTag() == "mock-runtime"
+            ? "SIMULATED"
+            : "REAL";
+    if (request.reality != runtime_reality) {
         return {false, false, request.job_id,
                 "INFERENCE_REALITY_NOT_AVAILABLE"};
     }

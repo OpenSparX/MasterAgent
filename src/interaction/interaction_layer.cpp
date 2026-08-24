@@ -396,8 +396,16 @@ Result<StandardRequest> InteractionLayer::submitText(
     request.params["input_source"] = input.source;
     request.params["input_type"] = "text";
     request.timestamp_utc_ms = clock_->utcNowMs();
+    if (input.deadline_ms > 300'000) {
+        return Result<StandardRequest>::Failure(Status::Error(
+            "interaction", "INTERACTION_DEADLINE_INVALID",
+            "deadline_ms must be between 1 and 300000 when provided"));
+    }
+    const auto deadline_ms =
+        input.deadline_ms == 0 ? 30'000ULL : input.deadline_ms;
     request.deadline_mono_ns =
-        clock_->monotonicNowNs() + 30LL * 1000LL * 1000LL * 1000LL;
+        clock_->monotonicNowNs() +
+        static_cast<std::int64_t>(deadline_ms) * 1'000'000LL;
     // The interaction design does not require user_id on TextInput. Preserve
     // a supplied identity for Memory integration and use a stable anonymous
     // principal when older clients omit this optional extension.

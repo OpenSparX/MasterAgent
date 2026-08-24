@@ -30,6 +30,9 @@ struct TextInput {
     std::string session_id;
     std::string source = "hmi";
     std::map<std::string, std::string> params;
+    /// Optional caller budget for local/embedded deployments. Zero preserves
+    /// the default 30-second ingress deadline.
+    std::uint64_t deadline_ms = 0;
 };
 
 struct StandardRequest {

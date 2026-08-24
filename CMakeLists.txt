@@ -106,6 +106,12 @@ set(MASTER_AGENT_CORE_SOURCES
     # Shared contracts
     src/common/types.cpp
 
+    # Config bundle runtime loading (model-selection slice)
+    src/config/model_profile_loader.cpp
+
+    # Optional endpoint-to-cloud fallback (disabled by default)
+    src/cloud/cloud_arbitration.cpp
+
     # Data and audit logging
     src/data_log/audit_writer.cpp
     src/data_log/event_writer.cpp
@@ -124,6 +130,7 @@ set(MASTER_AGENT_CORE_SOURCES
 
     # Inference and global arbitration
     src/inference/admission_controller.cpp
+    src/inference/debug_recording_model_runtime.cpp
     src/inference/global_arbiter.cpp
     src/inference/inference_events.cpp
     src/inference/inference_framework_impl.cpp
@@ -207,6 +214,9 @@ add_library(MasterAgent::Core ALIAS master_agent_core)
 # the same relative paths as a source-tree launch.
 file(COPY "${CMAKE_SOURCE_DIR}/config"
      DESTINATION "${CMAKE_BINARY_DIR}")
+file(COPY "${CMAKE_SOURCE_DIR}/agent-config"
+     DESTINATION "${CMAKE_BINARY_DIR}"
+     PATTERN ".DS_Store" EXCLUDE)
 
 if(MASTER_AGENT_ENABLE_IPC)
     target_sources(master_agent_core PRIVATE
@@ -223,18 +233,25 @@ if(MASTER_AGENT_ENABLE_QNN)
         "in this source delivery.")
 endif()
 
+if(MASTER_AGENT_BUILD_CLI)
+    add_subdirectory(cli)
+endif()
+
 if(MASTER_AGENT_BUILD_APP)
     add_executable(master_agent_app app/main.cpp)
     set_target_properties(master_agent_app PROPERTIES
         OUTPUT_NAME master_agent)
     target_link_libraries(master_agent_app PRIVATE MasterAgent::Core)
+    if(MASTER_AGENT_BUILD_CLI)
+        target_link_libraries(master_agent_app PRIVATE MasterAgent::SparxRuntimes)
+        target_include_directories(master_agent_app PRIVATE
+            "${CMAKE_SOURCE_DIR}/cli/include")
+        target_compile_definitions(master_agent_app PRIVATE
+            MASTER_AGENT_HAS_LLAMA_CPP=1)
+    endif()
     if(MINGW)
         copy_mingw_runtime(master_agent_app)
     endif()
-endif()
-
-if(MASTER_AGENT_BUILD_CLI)
-    add_subdirectory(cli)
 endif()
 
 if(MASTER_AGENT_BUILD_TESTS)
@@ -272,6 +289,11 @@ install(DIRECTORY docs/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent/docs)
 install(DIRECTORY config/
     DESTINATION config)
+install(DIRECTORY agent-config/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent/agent-config
+    PATTERN ".DS_Store" EXCLUDE)
+install(FILES scripts/validate_agent_config.rb
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/MasterAgent/scripts)
 
 configure_package_config_file(
     "${CMAKE_SOURCE_DIR}/cmake/MasterAgentConfig.cmake.in"

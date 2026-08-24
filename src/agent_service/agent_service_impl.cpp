@@ -17,7 +17,11 @@ AgentService::AgentService(
     std::shared_ptr<orchestrator::IOrchestrator> orchestrator,
     std::shared_ptr<atomic_service::IAtomicServiceManager> atomic,
     std::shared_ptr<data_log::IDataLogService> log,
-    std::shared_ptr<exception::IExceptionManager> exceptions)
+    std::shared_ptr<exception::IExceptionManager> exceptions,
+    std::string config_snapshot_id,
+    std::shared_ptr<inference::IInferenceFramework> inference,
+    std::shared_ptr<agent_dispatch::IAgentDispatch> dispatch,
+    std::filesystem::path local_debug_artifact_path)
     : clock_(std::move(clock)),
       ids_(std::move(ids)),
       preprocess_(std::move(preprocess)),
@@ -27,6 +31,10 @@ AgentService::AgentService(
       atomic_(std::move(atomic)),
       log_(std::move(log)),
       exceptions_(std::move(exceptions)),
+      config_snapshot_id_(std::move(config_snapshot_id)),
+      inference_(std::move(inference)),
+      dispatch_(std::move(dispatch)),
+      local_debug_artifact_path_(std::move(local_debug_artifact_path)),
       producer_epoch_(nextProducerEpoch()) {}
 
 // This is the process-level exception boundary for a user turn. No exception

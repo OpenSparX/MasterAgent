@@ -32,6 +32,10 @@ InferenceFramework::InferenceFramework(
     }
 }
 
+std::string InferenceFramework::runtimeTag() const {
+    return runtime_ ? runtime_->runtimeTag() : std::string{};
+}
+
 // Admission freezes request identity and creates the idempotency ledger entry.
 // Runtime sizing occurs outside mutex_ and is committed only if the captured
 // job version and external-operation token still match.

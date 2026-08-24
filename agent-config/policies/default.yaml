@@ -1,0 +1,80 @@
+api_version: masteragent.ai/v1alpha1
+kind: PolicySet
+metadata:
+  id: official-policies
+  version: 1
+
+spec:
+  immutable_safety_floor:
+    model_output_is_candidate_only: true
+    require_registered_executor: true
+    require_schema_validation: true
+    deny_retry_when_side_effect_unknown: true
+    deny_cloud_for_p0: true
+    deny_recursive_cloud_fallback: true
+
+  decision:
+    allowed_types: [Reply, Ask, QueryBatch, ExecutionPlan, RequestCloud, Fail]
+    max_plan_actions: 8
+    max_plan_depth: 8
+    reject_unknown_fields: true
+    require_frozen_catalog_snapshot: true
+
+  query:
+    max_batch_size: 8
+    max_rounds: 1
+    read_only_only: true
+    max_evidence_bytes: 65536
+    parallel_execution: true
+
+  retrieval:
+    top_domains: 3
+    top_skills: 8
+    top_capabilities: 20
+    progressive_disclosure: true
+    include_full_catalog_in_prompt: false
+
+  inference:
+    max_local_model_calls: 2
+    first_stage_may_query: true
+    second_stage_final_only: true
+    repair_attempts: 0
+
+  cloud:
+    enabled: false
+    implementation: fake-cloud
+    consent_preapproved: false
+    max_attempts: 1
+    allowed_priorities: [P1, P2]
+    min_remaining_deadline_ms: 5000
+    allowed_reasons:
+      - LOCAL_CAPABILITY_INSUFFICIENT
+      - LOCAL_CONTEXT_LIMIT_EXCEEDED
+      - COMPLEX_REASONING_REQUIRED
+      - REALTIME_KNOWLEDGE_REQUIRED
+      - INTENT_FIRST_INFERENCE_PROTOCOL_INVALID
+      - INTENT_MODEL_PROTOCOL_INVALID
+      - INTENT_MODEL_FALSE_EXECUTION_CLAIM
+    context_allowlist:
+      - current_turn
+      - intent_summary
+      - approved_skill_summaries
+      - approved_capability_summaries
+      - state.environment
+      - state.vehicle
+    context_denylist:
+      - raw_memory_journal
+      - credentials
+      - contacts
+      - precise_location_history
+
+  permissions:
+    grants:
+      - principal: local-cli-user
+        permissions: [vehicle.climate.write, vehicle.state.read]
+
+  deadlines:
+    default_turn_ms: 30000
+    maximum_turn_ms: 300000
+    reserve_for_validation_ms: 500
+    reserve_for_execution_ms: 1000

@@ -2016,8 +2016,8 @@ void testAgentServiceSanitizesDownstreamErrorsAndConcurrentProducers() {
         const auto page = log->queryTrace(query, observer);
         expect(page.status.ok && page.value &&
                    page.value->complete_for_requested_range &&
-                   page.value->events.size() == 3,
-               "each failed session must retain TURN_ACCEPTED, "
+                   page.value->events.size() == 4,
+               "each failed session must retain ingress, config, "
                "Exception and TURN_FAILED observations");
         std::set<std::string> event_types;
         for (const auto& event : page.value->events) {
@@ -2027,6 +2027,7 @@ void testAgentServiceSanitizesDownstreamErrorsAndConcurrentProducers() {
         expect(event_types ==
                    std::set<std::string>{
                        "TURN_ACCEPTED",
+                       "CONFIG_SNAPSHOT_BOUND",
                        "EXCEPTION_OCCURRENCE_ACCEPTED",
                        "TURN_FAILED"},
                "each concurrent trace must be complete without "
@@ -2056,19 +2057,19 @@ void testAgentServiceSanitizesDownstreamErrorsAndConcurrentProducers() {
                    "domain/code metadata");
         }
     }
-    expect(event_ids.size() == 6,
-           "concurrent traces must retain six unique events");
+    expect(event_ids.size() == 8,
+           "concurrent traces must retain eight unique events");
     const auto health = log->getHealth(observer);
     expect(health.ready && health.buffered_events == 0 &&
-               health.persisted_events == 6,
+               health.persisted_events == 8,
            "DataLog health must account for every concurrent "
            "AgentService and Exception event");
 
     const auto event_journal =
         data_log_directory / "events.jsonl";
     const auto event_lines = readNonEmptyLines(event_journal);
-    expect(event_lines.size() == 6,
-           "six accepted observations must create six physical "
+    expect(event_lines.size() == 8,
+           "eight accepted observations must create eight physical "
            "Event batch frames");
     std::vector<std::uint64_t> agent_log_sequences;
     std::vector<std::uint64_t> exception_log_sequences;
@@ -2099,7 +2100,7 @@ void testAgentServiceSanitizesDownstreamErrorsAndConcurrentProducers() {
     expect(agent_log_epochs.size() == 1 &&
                *agent_log_epochs.begin() != 0 &&
                agent_log_sequences ==
-                   std::vector<std::uint64_t>{1, 2, 3, 4},
+                   std::vector<std::uint64_t>{1, 2, 3, 4, 5, 6},
            "AgentService Event producer sequence must be physically "
            "gap-free and monotonic under concurrent turns");
     expect(exception_log_epochs.size() == 1 &&

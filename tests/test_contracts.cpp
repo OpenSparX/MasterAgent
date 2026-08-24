@@ -1053,6 +1053,15 @@ void testIntentFinalAskFailProtocolIsClosedAndBounded() {
                !valid_fail.value->task_dag,
            "allowlisted FAIL must become a bounded non-plan terminal");
 
+    const auto false_execution_claim = evaluate(
+        R"json({"branch":"NO_QUERY","final":{"outcome":"REPLY","reply":"车内温度和风量已经调整到更舒适的水平。"}})json",
+        "false-execution-claim");
+    expect(!false_execution_claim.status.ok &&
+               false_execution_claim.status.error.code ==
+                   "INTENT_MODEL_FALSE_EXECUTION_CLAIM" &&
+               !false_execution_claim.value,
+           "REPLY must not claim side effects without execution evidence");
+
     const std::vector<std::pair<std::string, std::string>>
         invalid_outputs{
             {"unknown-ask-slot",

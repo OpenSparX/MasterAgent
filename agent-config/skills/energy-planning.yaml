@@ -1,0 +1,18 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.energy_range_and_charging_plan
+  version: 1
+  display_name: 续航与补能规划
+  domain: energy
+  tags: [续航, 电量, 充电, 快充]
+spec:
+  enabled: true
+  summary: 使用可用电量状态给出保守建议；当前没有充电站和车辆充电执行 Provider。
+  triggers: {examples: [这点电够吗, 顺路找个快充, 今晚帮我把电补够]}
+  slots: {optional: [destination, distance, deadline, charging_preference]}
+  allowed_context_sources: [state.vehicle, memory.short_term_context]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: [trip-agent]
+  planning: {max_queries: 2, max_actions: 1, instructions: 不得伪造精确续航、充电站或充电执行结果；信息不足时澄清。}
+  fallback: {decision: Ask, reply: 请补充目的地或预计行驶距离。}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://masteragent.ai/schema/resource-envelope-v1alpha1.json",
+  "title": "MasterAgent resource envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "kind", "metadata", "spec"],
+  "properties": {
+    "api_version": {"const": "masteragent.ai/v1alpha1"},
+    "kind": {"enum": ["MasterAgentConfigBundle", "RuleSet", "Skill", "CapabilitySet", "ContextSourceSet", "Agent", "ModelProfile", "ModelRoutingPolicy", "PolicySet", "ConfigTestSuite"]},
+    "metadata": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"},
+        "version": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "string", "minLength": 1}]}
+      }
+    },
+    "spec": {"type": "object"}
+  },
+  "description": "公共资源外壳；各 kind 的业务字段由对应 schema 继续校验。manifest 使用 metadata.name/version。"
+}

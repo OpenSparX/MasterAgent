@@ -1,0 +1,32 @@
+api_version: masteragent.ai/v1alpha1
+kind: ModelProfile
+metadata:
+  id: model.local.intent.mock
+  version: 1
+  display_name: 本地确定性模拟模型
+
+spec:
+  enabled: true
+  role: intent
+  location: on_device
+  reality: simulated
+  runtime:
+    type: deterministic_mock
+  inference:
+    context_length: 4096
+    max_output_tokens: 1024
+    temperature: 0
+    streaming: false
+  protocol:
+    prompt_profile: prompts/intent-system.md
+    output_schema: prompts/decision-protocol.schema.json
+    response_format: json_object
+    max_model_calls: 2
+  limits:
+    timeout_ms: 30000
+    max_concurrency: 1
+  activation:
+    allowed_profiles: [development, test]
+    production_allowed: false
+  note: 与当前 MasterAgent 默认 MockModelRuntime 对齐；所有输出必须明确标记 SIMULATED。
+

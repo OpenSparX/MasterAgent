@@ -1,0 +1,18 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.cross_device_reminder_and_wrapup
+  version: 1
+  display_name: 提醒与事务收尾
+  domain: productivity
+  tags: [提醒, 通知, 跨端, 收尾]
+spec:
+  enabled: true
+  summary: 将提醒和收尾诉求结构化；当前没有提醒或跨端通知 Provider。
+  triggers: {examples: [提醒我取快递, 到地方跟家里说一声, 把事情收个尾]}
+  slots: {required: [content], optional: [trigger, recipient]}
+  allowed_context_sources: [memory.short_term_context]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: []
+  planning: {max_queries: 1, max_actions: 0, instructions: 不得声称提醒已创建或消息已发送。}
+  fallback: {decision: Ask, reply: 请补充提醒内容和触发时机。}

@@ -1,0 +1,19 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.trip_multi_stop_arrangement
+  version: 1
+  display_name: 多目的地顺路编排
+  domain: trip
+  tags: [多目的地, 顺路, 插点, 停靠]
+spec:
+  enabled: true
+  summary: 识别多个地点和先后约束，交给受治理的 trip-agent 生成候选规划。
+  triggers: {examples: [先去这个再去那个, 顺路安排一下, 中途插一个点]}
+  slots: {required: [stops], optional: [order_constraints, arrival_deadline]}
+  allowed_context_sources: [memory.short_term_context, state.environment]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: [trip-agent]
+  planning: {max_queries: 3, max_actions: 1, instructions: 不补造地点；可选停靠点不能提升为刚性任务。}
+  fallback: {decision: Ask, reply: 请确认要经过的地点和必须遵守的先后顺序。}
+

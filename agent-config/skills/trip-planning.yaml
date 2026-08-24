@@ -1,0 +1,38 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: skill.trip_planning
+  version: 1
+  display_name: 行程规划
+  domain: trip
+  tags: [行程, 机场, 多目的地, 时间约束]
+
+spec:
+  enabled: true
+  summary: 将行程目标交给受治理的 trip-agent 生成计划。
+  triggers:
+    examples:
+      - 请帮我规划明天去机场的行程
+      - 先接人再去公司
+      - 几点出发不会迟到
+  slots:
+    optional: [destination, departure_time, arrival_deadline, stops, constraints]
+  allowed_context_sources:
+    - memory.short_term_context
+    - state.vehicle
+    - state.environment
+  allowed_capabilities:
+    read: []
+    write: []
+  allowed_agents:
+    - trip-agent
+  planning:
+    max_queries: 4
+    max_actions: 1
+    instructions: |
+      信息足够时只产生一个 DispatchAgent Action，action 必须为 com_sgm_agent_trip_plan。
+      缺少会改变行程含义的目的地或关键时间时优先 Ask，不能伪造实时路况或路线结果。
+  fallback:
+    decision: Ask
+    reply: 请补充目的地和最重要的时间要求。
+

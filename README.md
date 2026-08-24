@@ -119,6 +119,31 @@ Every request flows through a **deterministic-first pipeline** — most requests
 6. **WAL Recovery** — Write-Ahead Logging with `UNKNOWN` terminal state for crash safety
 7. **Response** — Action results, typically **sub-100ms** end-to-end
 
+### Inspect one complete request
+
+The reference runtime persists privacy-safe structured events to DataLog. Use the
+same journal from the CLI or the offline Trace Viewer:
+
+```bash
+./build/master_agent --runtime=/tmp/masteragent-run "请把前排自动风速设置为高"
+./build/cli/sparx trace show /tmp/masteragent-run/data_log/events.jsonl --last
+./build/cli/sparx trace export /tmp/masteragent-run/data_log/events.jsonl \
+  --last --output /tmp/masteragent-run/trace.json
+```
+
+For a Chinese real-time interaction console, start the local bridge and open
+<http://127.0.0.1:8765>:
+
+```bash
+python3 tools/trace-viewer/server.py
+```
+
+Enter a request in the page; actual DataLog events appear while MasterAgent is
+running. The console uses only the Python standard library, listens on localhost,
+and can still import the exported `trace.json`. See
+[`docs/14_全链路可观测性与TraceViewer设计.md`](docs/14_全链路可观测性与TraceViewer设计.md)
+for the trace protocol, privacy modes, and extension contract.
+
 **Key components:**
 
 - **Preprocessing:** Input validation, UTF-8 normalization, parameter extraction
@@ -504,6 +529,31 @@ sparx plan show examples/automotive_assistant/plans/turn-off-ac.yaml
 - **Qualcomm NPU：** 可选硬件加速（比 CPU 快 10-100 倍）
 - **MCP 服务：** 模块化能力（车控、导航、智能家居等）
 - **WAL 恢复：** Write-Ahead Logging，带 UNKNOWN 终态
+
+### MasterAgent 配置包
+
+仓库提供开箱即用的官方 [`agent-config/`](agent-config/README.md)，统一描述规则、Skill、Capability、ContextSource、SubAgent、端侧/云端 Model、Policy、Prompt 和配置测试。官方目录用于默认体验；正式项目推荐复制为独立配置包：
+
+```bash
+cp -R agent-config my-car-config
+```
+
+配置包由其中的 `manifest.yaml` 识别，不依赖目录名。这样可以同时维护不同车型、客户和实验版本，而不覆盖官方默认配置。当前目录是 `v1alpha1` 目标协议基线，统一 Loader 与 `sparx config init/validate/use` 命令仍在后续实现计划中，详见 [`docs/12_配置驱动Skill与确定性执行单元设计.md`](docs/12_配置驱动Skill与确定性执行单元设计.md)。项目目录的改/删/增清单、各目录职责和分阶段迁移顺序见 [`docs/13_项目目录整改与配置包迁移计划.md`](docs/13_项目目录整改与配置包迁移计划.md)。
+
+完整 `master_agent` 参考应用已能读取配置包的模型选择切片：
+
+```bash
+# 使用官方包默认的端侧 Mock intent/classifier
+./build/master_agent --config=./agent-config "你好"
+
+# 显式选择 Qwen ModelProfile，权重路径仍通过 CLI 或 SPARX_MODEL 外部解析
+./build/master_agent --config=./agent-config \
+  --model-profile=model.local.intent.qwen2_5_3b \
+  --model=/path/to/qwen2.5-3b-instruct-q4_k_m.gguf \
+  "车里有点闷，帮我舒服点"
+```
+
+当前只有 ModelProfile/ModelRoutingPolicy 已进入运行时加载；Prompt/Skill 仍读旧 `config/`，Capability 仍由 C++ 注册。程序会在输出中标记 `loading_scope=MODEL_SELECTION_ONLY`，避免把部分接入误解为全配置驱动。
 
 ---
 

@@ -116,9 +116,23 @@ public:
             << "\nMEMORY:\n" << memory_text
             << "\nUSER:\n" << request.text
             << "\nPROTOCOL:\n"
-            << "FIRST_INFERENCE must return exactly one JSON branch: "
-               "QUERY_BATCH with a complete read-only query batch, or "
-               "NO_QUERY with a complete final PLAN/ASK/REPLY/FAIL decision.";
+            << "Return one JSON object only. Do not use Markdown fences, "
+               "comments, explanations, or additional keys. "
+               "FIRST_INFERENCE has exactly one of these shapes:\n"
+               "1) {\"branch\":\"NO_QUERY\",\"final\":"
+               "{\"outcome\":\"REPLY\",\"reply\":\"text\"}}\n"
+               "2) {\"branch\":\"NO_QUERY\",\"final\":"
+               "{\"outcome\":\"ASK\",\"slot\":\"location|time|person|seat|target|value|content|reference|preference|constraint\",\"reply\":\"text\"}}\n"
+               "3) {\"branch\":\"NO_QUERY\",\"final\":"
+               "{\"outcome\":\"FAIL\",\"reason_code\":\"unsupported|contradiction|no_valid_binding\",\"reply\":\"text\"}}\n"
+               "4) {\"branch\":\"NO_QUERY\",\"final\":"
+               "{\"outcome\":\"PLAN\",\"reply\":\"text\",\"nodes\":[{\"node_id\":\"T1\",\"executor\":\"agent_dispatch\",\"action\":\"an allowed capability\",\"target_agent\":\"registered agent\",\"params\":{}}]}}\n"
+               "5) {\"branch\":\"QUERY_BATCH\",\"queries\":[{\"query_id\":\"Q1\",\"capability\":\"an allowed read-only query capability\",\"arguments\":{},\"read_only\":true}]}\n"
+               "Use NO_QUERY REPLY for ordinary conversation that needs no "
+               "tool or additional evidence. REPLY is informational only: "
+               "if the user asks to change any device or external state, "
+               "REPLY must not claim that the change happened. Use a valid "
+               "PLAN, ASK, or FAIL instead.";
 
         const std::string tools_text = tools.dump();
         PromptPackage package;

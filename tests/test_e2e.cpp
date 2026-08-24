@@ -13,10 +13,13 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "master_agent/runtime/master_agent_runtime.h"
 #include "master_agent/common/types.h"
@@ -33,6 +36,43 @@ using master_agent::test_support::ScopedTempDirectory;
 using master_agent::test_support::expect;
 
 namespace {
+
+class InvalidProtocolModelRuntime final
+    : public master_agent::inference::IModelRuntime {
+public:
+    std::string runtimeTag() const override { return "invalid-protocol-test"; }
+    std::uint32_t requiredWorkUnits(
+        const master_agent::inference::InferenceRequest&) const override {
+        return 1;
+    }
+    master_agent::Result<master_agent::inference::InferenceOutput> infer(
+        const master_agent::inference::InferenceRequest& request,
+        const master_agent::inference::RuntimeInvocationSeal& seal) override {
+        master_agent::inference::InferenceOutput output;
+        output.raw_output = "not-json";
+        output.finish_reason = "stop";
+        output.model_id = request.model;
+        output.model_digest = seal.model_digest;
+        output.job_id = seal.job_id;
+        output.operation_id = seal.operation_id;
+        output.replica_id = seal.replica_id;
+        output.replica_epoch = seal.replica_epoch;
+        output.lease_id = seal.lease_id;
+        output.fencing_token = seal.fencing_token;
+        output.control_epoch = seal.control_epoch;
+        output.attempt_id = seal.attempt_id;
+        output.prompt_digest = seal.prompt_digest;
+        output.invocation_id = seal.invocation_id;
+        output.generated_token_count = 1;
+        output.runtime_backend = runtimeTag();
+        output.reality = request.reality;
+        output.output_digest =
+            master_agent::inference::inferenceOutputDigest(output);
+        return master_agent::Result<
+            master_agent::inference::InferenceOutput>::Success(
+                std::move(output));
+    }
+};
 
 /// Scriptable SDK double used to verify the Memory Service trust boundary.
 class ScriptedMemoryClient final
@@ -1071,7 +1111,7 @@ void testMockModelAndSubAgentEndToEnd() {
     expect(!dispatch_events.empty(),
            "Agent Dispatch must emit lifecycle events");
     const auto invocations =
-        runtime->modelRuntime()->invocations();
+        runtime->mockModelRuntime()->invocations();
     expect(invocations.size() == 2,
            "QUERY_BATCH path must invoke the model exactly twice");
     expect(invocations.at(0).inference_phase ==
@@ -1119,7 +1159,7 @@ void testBgeAcceptedPathBypassesModel() {
     const auto result = runtime->submitText(input);
     expect(result.success && !result.plan_id.empty(),
            "an accepted BGE class must create a deterministic plan");
-    expect(runtime->modelRuntime()->invocations().empty(),
+    expect(runtime->mockModelRuntime()->invocations().empty(),
            "an accepted BGE class must not invoke the language model");
 }
 
@@ -1177,7 +1217,7 @@ void testVersionedRuleArtifactFastPathAndSlotBinding() {
     complete.params["mode"] = "AUTO";
     const auto planned = runtime->submitText(complete);
     expect(planned.success && !planned.plan_id.empty() &&
-               runtime->modelRuntime()->invocations().empty(),
+               runtime->mockModelRuntime()->invocations().empty(),
            "complete rule slots must produce a deterministic plan without BGE or LLM");
 
     TextInput incomplete = complete;
@@ -1186,7 +1226,7 @@ void testVersionedRuleArtifactFastPathAndSlotBinding() {
     const auto clarified = runtime->submitText(incomplete);
     expect(clarified.success && clarified.plan_id.empty() &&
                clarified.turn_summary == "clarification" &&
-               runtime->modelRuntime()->invocations().empty(),
+               runtime->mockModelRuntime()->invocations().empty(),
            "a rule with a missing required slot must clarify instead of executing");
 }
 
@@ -1206,7 +1246,7 @@ void testFullReadOnlyQueryMatrixIsJoinedBeforeSecondInference() {
     expect(result.success && result.plan_id.empty(),
            "the query-matrix mock must finish with a direct reply");
 
-    const auto invocations = runtime->modelRuntime()->invocations();
+    const auto invocations = runtime->mockModelRuntime()->invocations();
     expect(invocations.size() == 2,
            "QUERY_BATCH must use exactly two model phases");
     const auto first = nlohmann::json::parse(invocations[0].raw_output);
@@ -1368,7 +1408,7 @@ void testModelReplyAskFailBypassOrchestrator() {
            "second-inference FAIL must terminate without a third model call");
 
     const auto invocations =
-        runtime->modelRuntime()->invocations();
+        runtime->mockModelRuntime()->invocations();
     expect(invocations.size() == 7,
            "REPLY/ASK/FAIL matrix must use 1+1+2+1+2 model calls");
     const auto first_ask_envelope = nlohmann::json::parse(
@@ -1533,6 +1573,83 @@ void testRuntimeShutdownIsIdempotentAndClosesIngress() {
            "shutdown must reject new ingress without entering modules");
 }
 
+void testOfflineCloudFallbackCompletesValidatedTripPlan() {
+    ScopedTempDirectory temp("master-agent-cloud-fallback");
+    master_agent::runtime::MasterAgentRuntimeOptions options;
+    options.clock = std::make_shared<ManualRuntimeClock>();
+    options.model_runtime =
+        std::make_shared<InvalidProtocolModelRuntime>();
+    options.enable_fake_cloud_fallback = true;
+    const auto created = MasterAgentRuntime::create(temp.path(), options);
+    expect(created.status.ok && created.value,
+           "cloud fallback runtime creation must succeed");
+    TextInput input;
+    input.text = u8"请帮我规划明天去机场的行程";
+    input.user_id = "cloud-user";
+    input.session_id = "cloud-session";
+    const auto result = (*created.value)->submitText(input);
+    expect(result.success && result.plan_state &&
+               *result.plan_state ==
+                   master_agent::orchestrator::PlanState::Succeeded,
+           "allowlisted local protocol failure must complete through fake cloud and local orchestrator");
+    const auto events = (*created.value)->intent()->cloudEvents();
+    expect(events.size() == 4 &&
+               events.front().event_type == "CLOUD_ESCALATION_REQUESTED" &&
+               events[1].event_type == "CLOUD_ESCALATION_ALLOWED" &&
+               events[2].event_type == "CLOUD_PAYLOAD_SEALED" &&
+               events.back().event_type == "CLOUD_FALLBACK_COMPLETED" &&
+               !events[2].payload_digest.empty() &&
+               events.back().runtime_tag == "fake-cloud",
+           "cloud path must expose one complete, digest-sealed audit sequence");
+}
+
+void testEndToEndTraceHasSafeTerminalTimeline() {
+    ScopedTempDirectory temp("master-agent-full-trace");
+    auto clock = std::make_shared<ManualRuntimeClock>();
+    const auto created = MasterAgentRuntime::create(temp.path(), clock, 1);
+    expect(created.status.ok && created.value,
+           "trace runtime creation must succeed");
+    TextInput input;
+    input.text = u8"请把前排自动风速设置为高";
+    input.user_id = "trace-user";
+    input.session_id = "trace-session";
+    const auto result = (*created.value)->submitText(input);
+    expect(result.success && !result.trace_id.empty(),
+           "traced request must complete");
+
+    master_agent::data_log::TraceQuery query;
+    query.trace_id = result.trace_id;
+    query.max_records = 1000;
+    CallContext call{CallerModuleId::AgentService, result.request_id,
+                     result.trace_id, "trace-test", TaskPriority::P1,
+                     clock->monotonicNowNs() + 1'000'000'000LL};
+    const auto page = (*created.value)->dataLog()->queryTrace(query, call);
+    expect(page.status.ok && page.value && page.value->events.size() >= 15,
+           "one trace_id must recover the major request stages");
+    std::set<std::string> stages;
+    bool terminal = false;
+    for (const auto& event : page.value->events) {
+        expect(event.payload_summary_json.find(input.text) == std::string::npos,
+               "safe trace must not persist raw user text");
+        try {
+            const auto payload = nlohmann::json::parse(event.payload_summary_json);
+            if (payload.contains("stage")) stages.insert(payload.at("stage"));
+        } catch (...) {
+        }
+        terminal = terminal || event.event_type == "TURN_COMPLETED";
+    }
+    expect(stages.count("ingress") && stages.count("config") &&
+               stages.count("preprocess") && stages.count("memory") &&
+               stages.count("rule_match") && stages.count("retrieval") &&
+               stages.count("local_inference") &&
+               stages.count("cloud_arbitration") &&
+               stages.count("cloud_inference") &&
+               stages.count("decision_validation") &&
+               stages.count("orchestration") && stages.count("reconciliation") &&
+               stages.count("trace_finalize") && terminal,
+           "trace must expose the governed major-stage timeline and terminal event");
+}
+
 }  // namespace
 
 int main() {
@@ -1552,6 +1669,8 @@ int main() {
         testStillUnknownReturnsPendingPlanReceipt();
         testInvalidIngress();
         testRuntimeShutdownIsIdempotentAndClosesIngress();
+        testOfflineCloudFallbackCompletesValidatedTripPlan();
+        testEndToEndTraceHasSafeTerminalTimeline();
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "test_e2e failure: " << error.what() << '\n';

@@ -1,0 +1,18 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.preference_reuse
+  version: 1
+  display_name: 个性化偏好复用
+  domain: memory
+  tags: [偏好, 习惯, 老样子]
+spec:
+  enabled: true
+  summary: 查询短期记忆并判断“按平时来”具体指向；指代不清时澄清。
+  triggers: {examples: [还是老样子, 按平时来, 和上次差不多]}
+  slots: {optional: [preference_type, target]}
+  allowed_context_sources: [memory.short_term_context, skill.match_candidates]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: []
+  planning: {max_queries: 2, max_actions: 0, instructions: 不得伪造不存在的历史偏好，也不得把模糊偏好直接变成副作用。}
+  fallback: {decision: Ask, reply: 你说的“老样子”是指空调、行程还是其他设置？}

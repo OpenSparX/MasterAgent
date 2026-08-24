@@ -1,0 +1,19 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.trip_weather_and_road_avoidance
+  version: 1
+  display_name: 天气与道路风险规避
+  domain: trip
+  tags: [下雨, 积水, 高架, 避让, 道路风险]
+spec:
+  enabled: true
+  summary: 将明确的道路规避偏好作为规划约束，不承诺不存在风险。
+  triggers: {examples: [别走积水那边, 今天不走高架, 避开学校门口那段]}
+  slots: {optional: [destination, avoid_constraints, risk_preference]}
+  allowed_context_sources: [memory.short_term_context, state.environment]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: [trip-agent]
+  planning: {max_queries: 3, max_actions: 1, instructions: 明确规避条件是硬约束；没有实时路况 Provider 时不得声称路线已经避开风险。}
+  fallback: {decision: Ask, reply: 请补充目的地和你要避开的道路或区域。}
+

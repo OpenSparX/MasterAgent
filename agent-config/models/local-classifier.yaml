@@ -1,0 +1,27 @@
+api_version: masteragent.ai/v1alpha1
+kind: ModelProfile
+metadata:
+  id: model.local.classifier.deterministic
+  version: 1
+  display_name: 本地确定性意图分类器
+
+spec:
+  enabled: true
+  role: classifier
+  location: on_device
+  reality: simulated
+  runtime:
+    type: deterministic_mock_bge
+  classifier:
+    label_schema_version: 1
+    calibration_dataset_version: mock-calibration-v1
+    ood_method: CLASS_PROTOTYPE_COSINE
+    max_sequence_tokens: 256
+  limits:
+    timeout_ms: 1000
+    max_concurrency: 1
+  activation:
+    allowed_profiles: [development, test]
+    production_allowed: false
+  note: 与当前 createDeterministicMockBgeClassifier 对齐；生产模型尚未接入。
+

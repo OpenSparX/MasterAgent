@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://masteragent.ai/schema/model-routing-policy-v1alpha1.json",
+  "title": "MasterAgent ModelRoutingPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "kind", "metadata", "spec"],
+  "properties": {
+    "api_version": {"const": "masteragent.ai/v1alpha1"},
+    "kind": {"const": "ModelRoutingPolicy"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"},
+        "version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "roles", "order", "cloud_fallback", "deadlines", "production_requirements"],
+      "properties": {
+        "profile": {"enum": ["development", "test", "production"]},
+        "roles": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["default", "on_device_candidates"],
+            "properties": {
+              "default": {"type": "string"},
+              "on_device_candidates": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+              "cloud_candidates": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+              "explicit_override_first": {"type": "boolean"},
+              "forbid_silent_fallback_after_explicit_selection": {"type": "boolean"}
+            }
+          }
+        },
+        "order": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
+        "cloud_fallback": {"type": "object"},
+        "deadlines": {"type": "object"},
+        "production_requirements": {"type": "object"}
+      }
+    }
+  }
+}

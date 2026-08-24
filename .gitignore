@@ -4,6 +4,8 @@ build-*/
 dist/
 *.tar.gz
 *.sha256
+*.gguf
+*.safetensors
 
 # IDE
 .vscode/
@@ -18,6 +20,8 @@ dist/
 # Temporary files
 *.log
 .cache/
+__pycache__/
+*.py[cod]
 
 # npm
 node_modules/

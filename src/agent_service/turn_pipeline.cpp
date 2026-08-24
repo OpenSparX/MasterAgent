@@ -7,7 +7,10 @@
 #include "include/capability_policy.h"
 #include "include/client_error_sanitization.h"
 
+#include <chrono>
 #include <thread>
+
+#include <nlohmann/json.hpp>
 
 namespace master_agent::agent_service {
 
@@ -67,7 +70,31 @@ TurnResult AgentService::runTurnImpl(
         };
     logEvent(request, "TURN_ACCEPTED", "runTurn", "accepted",
              data_log::EventSeverity::Info,
-             data_log::DurabilityClass::D2Journaled);
+             data_log::DurabilityClass::D2Journaled, {}, {},
+             nlohmann::json{{"stage", "ingress"},
+                            {"status", "SUCCEEDED"},
+                            {"input", {{"type", "text"},
+                                       {"length", request.text.size()},
+                                       {"digest", secureDigest(request.text)}}},
+                            {"privacy", "safe"}}.dump());
+    logEvent(request, "CONFIG_SNAPSHOT_BOUND", "bindConfig", "success",
+             data_log::EventSeverity::Info,
+             data_log::DurabilityClass::D2Journaled, {}, {},
+             nlohmann::json{{"stage", "config"},
+                            {"status", "SUCCEEDED"},
+                            {"output", {{"config_snapshot_id", config_snapshot_id_}}}}.dump());
+    debugEvent(request, "REQUEST_RECEIVED", "ingress",
+               nlohmann::json{{"received", {{"text", request.text},
+                                             {"params", request.params},
+                                             {"session_id", request.session_id},
+                                             {"turn_id", request.turn_id}}},
+                              {"operation", "接收并分配请求标识"},
+                              {"produced", {{"request_id", request.request_id},
+                                             {"trace_id", request.trace_id}}}}.dump());
+    debugEvent(request, "CONFIG_BOUND", "config",
+               nlohmann::json{{"received", {{"config_snapshot_id", config_snapshot_id_}}},
+                              {"operation", "为本次请求冻结配置快照"},
+                              {"produced", {{"config_snapshot_id", config_snapshot_id_}}}}.dump());
     if (original_deadline_expired()) {
         return deadline_failure("data_log", "TURN_ACCEPTED");
     }
@@ -103,7 +130,19 @@ TurnResult AgentService::runTurnImpl(
     }
     logEvent(request, "PREPROCESS_COMPLETED", "process", "success",
              data_log::EventSeverity::Info,
-             data_log::DurabilityClass::D1Buffered);
+             data_log::DurabilityClass::D1Buffered, {}, {},
+             nlohmann::json{{"stage", "preprocess"},
+                            {"status", "SUCCEEDED"},
+                            {"output", {{"type", "normalized_text"},
+                                        {"length", preprocessed.value->normalized_request.text.size()},
+                                        {"digest", secureDigest(preprocessed.value->normalized_request.text)}}}}.dump());
+    debugEvent(request, "PREPROCESS_DETAIL", "preprocess",
+               nlohmann::json{{"received", {{"original_text", request.text},
+                                             {"params", request.params}}},
+                              {"operation", "校验 UTF-8、清洗并标准化输入"},
+                              {"produced", {{"normalized_text", preprocessed.value->normalized_request.text},
+                                             {"normalized_params", preprocessed.value->normalized_request.params},
+                                             {"valid", preprocessed.value->valid}}}}.dump());
     if (original_deadline_expired()) {
         return deadline_failure(
             "data_log", "PREPROCESS_COMPLETED");
@@ -134,6 +173,25 @@ TurnResult AgentService::runTurnImpl(
     }
     if (recalled.status.ok && recalled.value) {
         memory_context = *recalled.value;
+        logEvent(request, "MEMORY_CONTEXT_RECALLED", "getContext", "success",
+                 data_log::EventSeverity::Info,
+                 data_log::DurabilityClass::D1Buffered, {}, {},
+                 nlohmann::json{{"stage", "memory"},
+                                {"status", "SUCCEEDED"},
+                                {"output", {{"context_blocks", memory_context.blocks.size()}}}}.dump());
+        nlohmann::json memory_blocks = nlohmann::json::array();
+        for (const auto& block : memory_context.blocks) {
+            memory_blocks.push_back({{"type", block.memory_type},
+                                     {"content", block.content},
+                                     {"source", block.source_memory_id},
+                                     {"relevance", block.relevance_score},
+                                     {"turn_id", block.turn_id}});
+        }
+        debugEvent(request, "MEMORY_RECALL_DETAIL", "memory",
+                   nlohmann::json{{"received", {{"query", preprocessed.value->normalized_request.text}}},
+                                  {"operation", "按当前会话召回最近的短期记忆"},
+                                  {"produced", {{"blocks", std::move(memory_blocks)},
+                                                 {"flattened_context", memory_context.flattened_context}}}}.dump());
     } else {
         const auto memory_error =
             recalled.status.ok
@@ -167,6 +225,24 @@ TurnResult AgentService::runTurnImpl(
                 "atomic catalog returned success without a snapshot"),
             "atomic_service", "getToolCatalogSnapshot");
     }
+    nlohmann::json tool_catalog = nlohmann::json::array();
+    const auto debug_catalog_call =
+        makeChildCallContext(internal, CallerModuleId::PromptEngine);
+    const auto listed_debug_tools = atomic_->listTools(debug_catalog_call);
+    if (listed_debug_tools.status.ok && listed_debug_tools.value) {
+        for (const auto& tool : *listed_debug_tools.value) {
+            tool_catalog.push_back({{"name", tool.name},
+                                    {"title", tool.title},
+                                    {"description", tool.description},
+                                    {"input_schema", tool.input_schema},
+                                    {"output_schema", tool.output_schema}});
+        }
+    }
+    debugEvent(request, "CAPABILITY_RECALL_DETAIL", "retrieval",
+               nlohmann::json{{"received", {{"normalized_text", preprocessed.value->normalized_request.text}}},
+                              {"operation", "读取本次请求可用的 Tool 能力目录"},
+                              {"produced", {{"tools", std::move(tool_catalog)},
+                                             {"catalog_digest", catalog.value->catalog_digest}}}}.dump());
     intent::IntentContext intent_context;
     intent_context.preprocess_result = *preprocessed.value;
     intent_context.memory_context = std::move(memory_context);
@@ -182,6 +258,12 @@ TurnResult AgentService::runTurnImpl(
         "intent-job|" + request.request_id + "|" +
             std::to_string(request.turn_id),
         internal);
+    logEvent(request, "INTENT_SUBMITTED", "submit", "accepted",
+             data_log::EventSeverity::Info,
+             data_log::DurabilityClass::D1Buffered, {}, {},
+             nlohmann::json{{"stage", "local_inference"},
+                            {"status", "STARTED"},
+                            {"input", {{"capability_catalog_digest", catalog.value->catalog_digest}}}}.dump());
     if (!intent_acceptance.accepted) {
         return failureResult(
             request,
@@ -202,8 +284,7 @@ TurnResult AgentService::runTurnImpl(
     // asynchronous job owner. Polling is only the local single-process
     // adapter; a process-separated deployment maps this loop to the reliable
     // completion callback/outbox and retains getResult for recovery.
-    for (std::size_t observation = 0; observation < 100000;
-         ++observation) {
+    while (!original_deadline_expired()) {
         if (original_deadline_expired()) break;
         const auto job = intent_->getResult(
             intent_acceptance.job_id, internal);
@@ -250,7 +331,12 @@ TurnResult AgentService::runTurnImpl(
             }
             break;
         }
-        std::this_thread::yield();
+        // Real runtimes can spend seconds in prefill/decode. A tight bounded
+        // spin exhausted its observation count before the asynchronous Intent
+        // worker could publish a terminal result. The request deadline is the
+        // actual bound; a short sleep keeps the local synchronous adapter from
+        // consuming a core while preserving prompt cancellation checks.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     if (original_deadline_expired()) {
         return deadline_failure("intent", "getResult");
@@ -274,6 +360,126 @@ TurnResult AgentService::runTurnImpl(
     result.session_id = request.session_id;
     result.turn_id = request.turn_id;
     const auto& decision = *intent_result.value;
+    const auto decision_type = [&decision]() {
+        using intent::IntentOutcomeType;
+        switch (decision.outcome_type) {
+            case IntentOutcomeType::DirectReply: return "Reply";
+            case IntentOutcomeType::Clarify: return "Ask";
+            case IntentOutcomeType::DeterministicPlan: return "ExecutionPlan";
+            case IntentOutcomeType::Failed: return "Fail";
+            case IntentOutcomeType::Cancelled: return "Cancelled";
+        }
+        return "Unknown";
+    }();
+    const auto reason_prefix = [](const std::string& value,
+                                  const std::string& prefix) {
+        return value.rfind(prefix, 0) == 0;
+    };
+    const bool deterministic_route =
+        reason_prefix(decision.reason_code, "RULE_") ||
+        reason_prefix(decision.reason_code, "SKILL_") ||
+        reason_prefix(decision.reason_code, "BGE_");
+    logEvent(request, "RULE_ROUTE_RESOLVED", "resolve", "observed",
+             data_log::EventSeverity::Info,
+             data_log::DurabilityClass::D1Buffered, {}, {},
+             nlohmann::json{{"stage", "rule_match"},
+                            {"status", deterministic_route ? "SUCCEEDED" : "SKIPPED"},
+                            {"output", {{"reason_code", decision.reason_code}}}}.dump());
+    logEvent(request, "RETRIEVAL_RESOLVED", "retrieve", "observed",
+             data_log::EventSeverity::Info,
+             data_log::DurabilityClass::D1Buffered, {}, {},
+             nlohmann::json{{"stage", "retrieval"},
+                            {"status", deterministic_route ? "SUCCEEDED" : "SKIPPED"}}.dump());
+
+    std::size_t local_inference_events = 0;
+    if (inference_) {
+        for (const auto& event : inference_->events()) {
+            if (event.trace_id != request.trace_id) continue;
+            ++local_inference_events;
+            const bool failed = event.state == inference::InferenceJobState::Failed;
+            const bool completed = event.state == inference::InferenceJobState::Completed;
+            nlohmann::json output{{"job_id", event.job_id},
+                                  {"model_stage", event.stage}};
+            if (event.result) {
+                output["model_id"] = event.result->model_id;
+                output["runtime"] = event.result->runtime_backend;
+                output["prompt_digest"] = event.result->prompt_digest;
+                output["model_output_digest"] = event.result->output_digest;
+                output["prompt_tokens"] = event.result->prompt_token_count;
+                output["generated_tokens"] = event.result->generated_token_count;
+                output["total_latency_ms"] = event.result->total_latency_ms;
+            }
+            logEvent(request, "LOCAL_INFERENCE_OBSERVED", "infer", event.event_type,
+                     failed ? data_log::EventSeverity::Error : data_log::EventSeverity::Info,
+                     data_log::DurabilityClass::D1Buffered, {},
+                     event.last_error ? event.last_error->code : std::string{},
+                     nlohmann::json{{"stage", "local_inference"},
+                                    {"status", failed ? "FAILED" :
+                                        (completed ? "SUCCEEDED" : "STARTED")},
+                                    {"output", std::move(output)}}.dump());
+        }
+    }
+    if (local_inference_events == 0) {
+        logEvent(request, "LOCAL_INFERENCE_SKIPPED", "infer", "not_required",
+                 data_log::EventSeverity::Info,
+                 data_log::DurabilityClass::D1Buffered, {}, {},
+                 nlohmann::json{{"stage", "local_inference"},
+                                {"status", "SKIPPED"}}.dump());
+    }
+
+    std::size_t cloud_events = 0;
+    for (const auto& event : intent_->cloudEvents()) {
+        if (event.trace_id != request.trace_id) continue;
+        ++cloud_events;
+        logEvent(request, event.event_type, "cloudFallback", event.outcome,
+                 data_log::EventSeverity::Info,
+                 data_log::DurabilityClass::D2Journaled, {}, {},
+                 nlohmann::json{{"stage", event.event_type.find("ARBITRATION") != std::string::npos ||
+                                                   event.event_type.find("ESCALATION") != std::string::npos
+                                               ? "cloud_arbitration" : "cloud_inference"},
+                                {"status", event.outcome},
+                                {"output", {{"reason_code", event.reason_code},
+                                            {"payload_digest", event.payload_digest},
+                                            {"model_output_digest", event.output_digest},
+                                            {"runtime", event.runtime_tag}}}}.dump());
+    }
+    if (cloud_events == 0) {
+        logEvent(request, "CLOUD_ARBITRATION_SKIPPED", "cloudFallback", "not_required",
+                 data_log::EventSeverity::Info,
+                 data_log::DurabilityClass::D1Buffered, {}, {},
+                 nlohmann::json{{"stage", "cloud_arbitration"},
+                                {"status", "SKIPPED"}}.dump());
+        logEvent(request, "CLOUD_INFERENCE_SKIPPED", "cloudInfer", "not_required",
+                 data_log::EventSeverity::Info,
+                 data_log::DurabilityClass::D1Buffered, {}, {},
+                 nlohmann::json{{"stage", "cloud_inference"},
+                                {"status", "SKIPPED"}}.dump());
+    }
+    logEvent(request, "INTENT_DECISION_VALIDATED", "getResult", "success",
+             data_log::EventSeverity::Info,
+             data_log::DurabilityClass::D2Journaled, {}, {},
+             nlohmann::json{{"stage", "decision_validation"},
+                            {"status", "SUCCEEDED"},
+                            {"output", {{"decision_type", decision_type},
+                                        {"reason_code", decision.reason_code},
+                                        {"reply_digest", secureDigest(decision.user_reply)}}}}.dump());
+    nlohmann::json decision_detail{{"outcome", decision_type},
+                                   {"reason_code", decision.reason_code},
+                                   {"user_reply", decision.user_reply}};
+    if (decision.task_dag) {
+        decision_detail["plan"] = nlohmann::json::array();
+        for (const auto& node : decision.task_dag->nodes) {
+            decision_detail["plan"].push_back({{"node_id", node.node_id},
+                                                {"executor", node.executor},
+                                                {"action", node.action},
+                                                {"target_agent", node.target_agent},
+                                                {"params", node.params}});
+        }
+    }
+    debugEvent(request, "DECISION_DETAIL", "decision_validation",
+               nlohmann::json{{"received", {{"intent_job_id", intent_acceptance.job_id}}},
+                              {"operation", "解析模型或规则结果，并校验为确定性执行单元"},
+                              {"produced", std::move(decision_detail)}}.dump());
     if (decision.outcome_type == intent::IntentOutcomeType::DirectReply ||
         decision.outcome_type == intent::IntentOutcomeType::Clarify) {
         result.reply = decision.user_reply;
@@ -421,7 +627,26 @@ TurnResult AgentService::runTurnImpl(
             };
         logEvent(request, "PLAN_COMMITTED", "submit", "accepted",
                  data_log::EventSeverity::Info,
-                 data_log::DurabilityClass::D2Journaled, result.plan_id);
+                 data_log::DurabilityClass::D2Journaled, result.plan_id, {},
+                 nlohmann::json{{"stage", "orchestration"},
+                                {"status", "STARTED"},
+                                {"output", {{"plan_id", result.plan_id},
+                                            {"node_count", decision.task_dag->nodes.size()}}}}.dump());
+        nlohmann::json submitted_nodes = nlohmann::json::array();
+        for (const auto& node : decision.task_dag->nodes) {
+            submitted_nodes.push_back({{"node_id", node.node_id},
+                                       {"executor", node.executor},
+                                       {"action", node.action},
+                                       {"target_agent", node.target_agent},
+                                       {"params", node.params},
+                                       {"dependencies", node.dependencies}});
+        }
+        debugEvent(request, "PLAN_DETAIL", "orchestration",
+                   nlohmann::json{{"received", {{"decision", "ExecutionPlan"},
+                                                 {"nodes", std::move(submitted_nodes)}}},
+                                  {"operation", "校验权限、幂等与依赖后提交 DAG"},
+                                  {"produced", {{"plan_id", result.plan_id},
+                                                 {"accepted", true}}}}.dump());
         if (original_deadline_expired()) {
             return pending_after_deadline();
         }
@@ -462,6 +687,81 @@ TurnResult AgentService::runTurnImpl(
         }
         result.plan_state = plan.value->state;
         result.reply = replyForPlan(*plan.value);
+        nlohmann::json execution_nodes = nlohmann::json::array();
+        for (const auto& [node_id, node] : plan.value->nodes) {
+            execution_nodes.push_back({{"node_id", node_id},
+                                       {"action", node.definition.action},
+                                       {"executor", node.definition.executor},
+                                       {"bound_params", node.bound_params},
+                                       {"result", node.result},
+                                       {"error_code", node.error_code},
+                                       {"execution_id", node.execution_id},
+                                       {"side_effect_state", toString(node.side_effect_state)}});
+        }
+        debugEvent(request, "EXECUTION_RESULT_DETAIL", "execution",
+                   nlohmann::json{{"received", {{"plan_id", result.plan_id}}},
+                                  {"operation", "执行 Tool/子 Agent 并收集完成证据"},
+                                  {"produced", {{"nodes", std::move(execution_nodes)},
+                                                 {"reply", result.reply}}}}.dump());
+        for (const auto& event : atomic_->events()) {
+            if (event.trace_id != request.trace_id) continue;
+            const auto state = [&event]() {
+                using atomic_service::AtomicExecutionState;
+                switch (event.state) {
+                    case AtomicExecutionState::Accepted: return "STARTED";
+                    case AtomicExecutionState::Queued: return "STARTED";
+                    case AtomicExecutionState::Running: return "STARTED";
+                    case AtomicExecutionState::Suspended: return "STARTED";
+                    case AtomicExecutionState::Succeeded: return "SUCCEEDED";
+                    case AtomicExecutionState::Failed: return "FAILED";
+                    case AtomicExecutionState::Cancelled: return "CANCELLED";
+                    case AtomicExecutionState::Unknown: return "UNKNOWN";
+                }
+                return "UNKNOWN";
+            }();
+            logEvent(request, "ATOMIC_EXECUTION_OBSERVED", "executeTool",
+                     event.event_type,
+                     state == std::string("FAILED")
+                         ? data_log::EventSeverity::Error
+                         : data_log::EventSeverity::Info,
+                     data_log::DurabilityClass::D2Journaled, result.plan_id,
+                     event.error_code,
+                     nlohmann::json{{"stage", "execution"},
+                                    {"status", state},
+                                    {"output", {{"tool_name", event.tool_name},
+                                                {"execution_id", event.execution_id},
+                                                {"side_effect_state", toString(event.side_effect_state)},
+                                                {"result_digest", event.call_tool_result
+                                                    ? secureDigest(event.call_tool_result->structured_content.dump())
+                                                    : std::string{}}}}}.dump());
+        }
+        if (dispatch_) {
+            for (const auto& event : dispatch_->events()) {
+                if (event.trace_id != request.trace_id) continue;
+                const auto terminal = event.state == agent_dispatch::DispatchState::Succeeded
+                    ? "SUCCEEDED" : (event.state == agent_dispatch::DispatchState::Failed
+                    ? "FAILED" : (event.state == agent_dispatch::DispatchState::Cancelled
+                    ? "CANCELLED" : "STARTED"));
+                logEvent(request, "SUBAGENT_EXECUTION_OBSERVED", "dispatchAgent",
+                         event.event_type, data_log::EventSeverity::Info,
+                         data_log::DurabilityClass::D2Journaled, result.plan_id,
+                         event.error_code,
+                         nlohmann::json{{"stage", "execution"},
+                                        {"status", terminal},
+                                        {"output", {{"agent_id", event.agent_id},
+                                                    {"execution_id", event.execution_id},
+                                                    {"side_effect_state", toString(event.side_effect_state)},
+                                                    {"result_digest", secureDigest(event.result.dump())}}}}.dump());
+            }
+        }
+        logEvent(request, "PLAN_OBSERVED", "getPlan",
+                 planTerminal(plan.value->state) ? "terminal" : "pending",
+                 data_log::EventSeverity::Info,
+                 data_log::DurabilityClass::D2Journaled, result.plan_id, {},
+                 nlohmann::json{{"stage", "reconciliation"},
+                                {"status", planTerminal(plan.value->state)
+                                               ? "SUCCEEDED" : "STARTED"},
+                                {"output", {{"node_count", plan.value->nodes.size()}}}}.dump());
         if (!planTerminal(plan.value->state)) {
             // The reference runtime's synchronous driver is a bounded convenience.
             // STALLED/PUMP_LIMIT means a durably committed asynchronous plan
@@ -580,7 +880,14 @@ TurnResult AgentService::runTurnImpl(
                  ? data_log::EventSeverity::Info
                  : data_log::EventSeverity::Error,
              data_log::DurabilityClass::D3Fsynced, result.plan_id,
-             result.error_code);
+             result.error_code,
+             nlohmann::json{{"stage", "trace_finalize"},
+                            {"status", result.pending ? "STARTED"
+                                : (result.success ? "SUCCEEDED" : "FAILED")},
+                            {"output", {{"reply_length", result.reply.size()},
+                                        {"reply_digest", secureDigest(result.reply)},
+                                        {"turn_summary", result.turn_summary},
+                                        {"pending", result.pending}}}}.dump());
     if (original_deadline_expired()) {
         return result.plan_id.empty()
                    ? deadline_failure(

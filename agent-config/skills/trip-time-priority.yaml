@@ -1,0 +1,19 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.trip_time_priority_planning
+  version: 1
+  display_name: 时效优先行程规划
+  domain: trip
+  tags: [迟到, 出发时间, 到达时间, 时间约束]
+spec:
+  enabled: true
+  summary: 基于目的地和截止时间给出保守的出发建议或最小澄清。
+  triggers: {examples: [来得及吗, 几点走合适, 去公司别迟到]}
+  slots: {required: [destination], optional: [arrival_deadline, stops]}
+  allowed_context_sources: [memory.short_term_context, state.vehicle, state.environment]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: [trip-agent]
+  planning: {max_queries: 3, max_actions: 1, instructions: 不伪造实时路况或精确到分钟的承诺；信息足够时可派发一个行程规划任务。}
+  fallback: {decision: Ask, reply: 请补充目的地和希望到达的时间。}
+

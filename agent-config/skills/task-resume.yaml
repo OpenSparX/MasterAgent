@@ -1,0 +1,18 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.interrupted_task_resume
+  version: 1
+  display_name: 被打断任务恢复
+  domain: memory
+  tags: [继续, 恢复, 中断, 上下文]
+spec:
+  enabled: true
+  summary: 从短期记忆中识别被打断任务，无法唯一确定时先确认。
+  triggers: {examples: [继续刚才那个, 刚才被电话打断了, 等停好再继续]}
+  slots: {optional: [task_reference]}
+  allowed_context_sources: [memory.short_term_context, state.vehicle]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: []
+  planning: {max_queries: 2, max_actions: 0, instructions: 不得伪造此前不存在的任务；恢复执行需要重新经过当前能力和安全校验。}
+  fallback: {decision: Ask, reply: 你想继续刚才哪一件事？}

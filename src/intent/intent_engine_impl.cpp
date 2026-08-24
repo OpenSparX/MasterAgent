@@ -207,7 +207,11 @@ IntentEngine::IntentEngine(
     std::shared_ptr<inference::IInferenceFramework> inference,
     std::shared_ptr<IBgeIntentClassifier> bge,
     std::shared_ptr<IIntentQueryExecutor> query_executor,
-    std::shared_ptr<IIntentResultListener> result_listener)
+    std::shared_ptr<IIntentResultListener> result_listener,
+    std::shared_ptr<cloud::ICloudArbiter> cloud_arbiter,
+    std::shared_ptr<cloud::ICloudContextBuilder> cloud_context,
+    std::shared_ptr<cloud::ICloudModelRuntime> cloud_runtime,
+    std::string model_profile_id)
     : clock_(std::move(clock)),
       ids_(std::move(ids)),
       skill_(std::move(skill)),
@@ -215,7 +219,14 @@ IntentEngine::IntentEngine(
       inference_(std::move(inference)),
       bge_(std::move(bge)),
       query_executor_(std::move(query_executor)),
-      result_listener_(std::move(result_listener)) {
+      result_listener_(std::move(result_listener)),
+      cloud_arbiter_(std::move(cloud_arbiter)),
+      cloud_context_(std::move(cloud_context)),
+      cloud_runtime_(std::move(cloud_runtime)),
+      model_profile_id_(std::move(model_profile_id)) {
+    if (model_profile_id_.empty()) {
+        model_profile_id_ = "mock-master-agent";
+    }
     if (!bge_) {
         bge_ =
             createDeterministicMockBgeClassifier(clock_);
@@ -613,8 +624,94 @@ IntentEngine::processWithRuleSnapshot(
     updateJobStage(
         job_id, IntentJobState::FirstInference,
         "FIRST_INFERENCE");
-    return runMockInferencePath(
+    const auto local = runMockInferencePath(
         request, context, intent_call, job_id);
+    if (local.status.ok) return local;
+    return tryCloudFallback(
+        request, context, intent_call, local.status);
+}
+
+std::vector<cloud::CloudEvent> IntentEngine::cloudEvents() const {
+    std::lock_guard<std::mutex> lock(jobs_mutex_);
+    return cloud_events_;
+}
+
+Result<IntentOrchestrationResult> IntentEngine::tryCloudFallback(
+    const interaction::StandardRequest& request,
+    const IntentContext& context,
+    const CallContext& call,
+    const Status& local_failure) {
+    if (!cloud_arbiter_ || !cloud_context_ || !cloud_runtime_) {
+        return Result<IntentOrchestrationResult>::Failure(local_failure);
+    }
+    cloud::CloudEscalationRequest escalation;
+    escalation.request_id = request.request_id;
+    escalation.trace_id = request.trace_id;
+    escalation.reason_code = local_failure.error.code;
+    escalation.priority = context.priority;
+    escalation.deadline_mono_ns = context.deadline_mono_ns;
+    escalation.cloud_attempt = 0;
+    auto record = [&](cloud::CloudEvent event) {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        cloud_events_.push_back(std::move(event));
+    };
+    record({"CLOUD_ESCALATION_REQUESTED", request.request_id,
+            request.trace_id, escalation.reason_code, "REQUESTED"});
+    const auto arbitration = cloud_arbiter_->decide(escalation);
+    if (!arbitration.allowed) {
+        record({"CLOUD_ESCALATION_DENIED", request.request_id,
+                request.trace_id, escalation.reason_code,
+                arbitration.reason_code});
+        return Result<IntentOrchestrationResult>::Failure(local_failure);
+    }
+    record({"CLOUD_ESCALATION_ALLOWED", request.request_id,
+            request.trace_id, escalation.reason_code,
+            arbitration.reason_code});
+    const auto envelope = cloud_context_->build(
+        escalation, request,
+        context.preprocess_result.normalized_request.text);
+    if (!envelope.status.ok || !envelope.value) {
+        record({"CLOUD_CONTEXT_REJECTED", request.request_id,
+                request.trace_id, escalation.reason_code, "FAILED"});
+        return Result<IntentOrchestrationResult>::Failure(envelope.status);
+    }
+    cloud::CloudEvent sealed{"CLOUD_PAYLOAD_SEALED", request.request_id,
+                             request.trace_id, escalation.reason_code,
+                             "SEALED"};
+    sealed.payload_digest = envelope.value->payload_digest;
+    record(std::move(sealed));
+    const auto cloud_output = cloud_runtime_->infer(*envelope.value, call);
+    if (!cloud_output.status.ok || !cloud_output.value) {
+        record({"CLOUD_INFERENCE_FAILED", request.request_id,
+                request.trace_id, escalation.reason_code, "FAILED"});
+        return Result<IntentOrchestrationResult>::Failure(
+            cloud_output.status);
+    }
+    inference::InferenceOutput output;
+    output.raw_output = cloud_output.value->raw_output;
+    output.finish_reason = "stop";
+    output.model_id = cloud_output.value->runtime_tag;
+    output.model_digest = secureDigest(output.model_id);
+    output.job_id = ids_->next("cloud-inference");
+    output.operation_id = output.job_id;
+    output.replica_id = "cloud";
+    output.attempt_id = "cloud-attempt-1";
+    output.prompt_digest = envelope.value->payload_digest;
+    output.invocation_id = output.job_id;
+    output.runtime_backend = cloud_output.value->runtime_tag;
+    output.reality = "SIMULATED_CLOUD";
+    output.output_digest = inference::inferenceOutputDigest(output);
+    auto parsed = parseModelDecision(request, context, output, call);
+    cloud::CloudEvent completed{
+        parsed.status.ok ? "CLOUD_FALLBACK_COMPLETED"
+                         : "CLOUD_OUTPUT_REJECTED",
+        request.request_id, request.trace_id, escalation.reason_code,
+        parsed.status.ok ? "SUCCESS" : "FAILED"};
+    completed.payload_digest = envelope.value->payload_digest;
+    completed.output_digest = cloud_output.value->output_digest;
+    completed.runtime_tag = cloud_output.value->runtime_tag;
+    record(std::move(completed));
+    return parsed;
 }
 
 void IntentEngine::updateJobStage(

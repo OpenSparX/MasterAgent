@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://masteragent.ai/schema/model-profile-v1alpha1.json",
+  "title": "MasterAgent ModelProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "kind", "metadata", "spec"],
+  "properties": {
+    "api_version": {"const": "masteragent.ai/v1alpha1"},
+    "kind": {"const": "ModelProfile"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "display_name"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^model\\.[a-zA-Z0-9._-]+$"},
+        "version": {"type": "integer", "minimum": 1},
+        "display_name": {"type": "string", "minLength": 1},
+        "maturity": {"enum": ["experimental", "preview", "stable"]}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["enabled", "role", "location", "reality", "runtime", "limits"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "role": {"enum": ["intent", "classifier", "embedding", "reranker", "summarizer"]},
+        "location": {"enum": ["on_device", "cloud"]},
+        "reality": {"enum": ["real", "cloud", "simulated", "simulated_cloud"]},
+        "runtime": {"type": "object", "required": ["type"]},
+        "artifact": {"type": "object"},
+        "model": {"type": "object"},
+        "inference": {"type": "object"},
+        "classifier": {"type": "object"},
+        "protocol": {"type": "object"},
+        "limits": {"type": "object", "required": ["timeout_ms", "max_concurrency"]},
+        "privacy": {"type": "object"},
+        "activation": {"type": "object"},
+        "validation": {"type": "object"},
+        "known_limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

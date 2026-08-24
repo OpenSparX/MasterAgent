@@ -335,6 +335,8 @@ std::string LlamaCppModelRuntime::buildRequestBody(
          << "\"messages\":[{\"role\":\"user\",\"content\":\""
          << jsonEscape(request.prompt) << "\"}],"
          << "\"stream\":" << (stream ? "true" : "false") << ","
+         << "\"response_format\":{\"type\":\"json_object\"},"
+         << "\"temperature\":0,"
          << "\"cache_prompt\":true";
     body << "}";
     return body.str();
@@ -524,4 +526,3 @@ Result<InferenceOutput> LlamaCppModelRuntime::inferStream(
 }
 
 }  // namespace master_agent::inference
-

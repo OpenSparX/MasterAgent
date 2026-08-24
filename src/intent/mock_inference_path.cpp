@@ -32,6 +32,11 @@ IntentEngine::runMockInferencePath(
     inference_request.prompt_protocol_version =
         package.value->protocol_version;
     inference_request.inference_phase = "FIRST_INFERENCE";
+    inference_request.model = model_profile_id_;
+    inference_request.reality =
+        inference_->runtimeTag() == "mock-runtime"
+            ? "SIMULATED"
+            : "REAL";
     inference_request.priority = context.priority;
     inference_request.deadline_mono_ns = context.deadline_mono_ns;
     inference_request.idempotency_key =

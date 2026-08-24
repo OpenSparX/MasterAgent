@@ -6,6 +6,7 @@
  */
 
 #include <atomic>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -81,7 +82,11 @@ public:
         std::shared_ptr<orchestrator::IOrchestrator> orchestrator,
         std::shared_ptr<atomic_service::IAtomicServiceManager> atomic,
         std::shared_ptr<data_log::IDataLogService> log,
-        std::shared_ptr<exception::IExceptionManager> exceptions);
+        std::shared_ptr<exception::IExceptionManager> exceptions,
+        std::string config_snapshot_id = "runtime-default",
+        std::shared_ptr<inference::IInferenceFramework> inference = nullptr,
+        std::shared_ptr<agent_dispatch::IAgentDispatch> dispatch = nullptr,
+        std::filesystem::path local_debug_artifact_path = {});
 
     TurnResult runTurn(
         const interaction::StandardRequest& request,
@@ -99,13 +104,19 @@ private:
                   data_log::EventSeverity severity,
                   data_log::DurabilityClass durability,
                   const std::string& plan_id = {},
-                  const std::string& error_ref = {});
+                  const std::string& error_ref = {},
+                  const std::string& payload_summary_json = "{}");
 
     void reportFailure(const interaction::StandardRequest& request,
                        const StructuredError& error,
                        const std::string& source_module,
                        const std::string& operation,
                        const std::string& plan_id = {});
+
+    void debugEvent(const interaction::StandardRequest& request,
+                    const std::string& event_type,
+                    const std::string& stage,
+                    const std::string& payload_json);
 
     TurnResult failureResult(
         const interaction::StandardRequest& request,
@@ -122,6 +133,11 @@ private:
     std::shared_ptr<atomic_service::IAtomicServiceManager> atomic_;
     std::shared_ptr<data_log::IDataLogService> log_;
     std::shared_ptr<exception::IExceptionManager> exceptions_;
+    std::string config_snapshot_id_;
+    std::shared_ptr<inference::IInferenceFramework> inference_;
+    std::shared_ptr<agent_dispatch::IAgentDispatch> dispatch_;
+    std::filesystem::path local_debug_artifact_path_;
+    mutable std::mutex debug_artifact_mutex_;
     std::uint64_t producer_epoch_ = 1;
     mutable std::mutex log_producer_mutex_;
     mutable std::mutex exception_producer_mutex_;

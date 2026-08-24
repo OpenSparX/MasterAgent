@@ -1,0 +1,33 @@
+api_version: masteragent.ai/v1alpha1
+kind: Agent
+metadata:
+  id: trip-agent
+  version: 1
+  display_name: 行程规划 SubAgent
+
+spec:
+  enabled: true
+  provider: deterministic-reference-sub-agent
+  capabilities:
+    - id: com_sgm_agent_trip_plan
+      version: 1
+      input_schema:
+        type: object
+        additionalProperties: true
+        properties:
+          request: {type: string}
+      output_schema:
+        type: object
+        additionalProperties: true
+      required_permissions: []
+      allowed_child_capabilities: []
+  execution:
+    max_concurrency: 1
+    reserved_p0_slots: 0
+    timeout_ms: 10000
+    supports_safe_point_preemption: true
+    completion_policy: RETURN_CONFIRMED
+    prompt_profile_id: default
+    model_profile_id: mock
+  note: 这是用于验证 MasterAgent 调度边界的确定性参考 SubAgent，不是生产导航服务。
+

@@ -1,0 +1,22 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: music.play
+  version: 1
+  display_name: 音乐播放理解
+  domain: media
+  tags: [音乐, 播放, 暂停, 切歌]
+spec:
+  enabled: true
+  summary: 理解音乐控制诉求；当前官方包未注册媒体 Provider，因此只允许澄清或说明能力不可用。
+  triggers:
+    examples: [播放音乐, 放首歌, 暂停音乐, 下一首]
+  slots: {optional: [content, operation]}
+  allowed_context_sources: [memory.short_term_context]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: []
+  planning:
+    max_queries: 1
+    max_actions: 0
+    instructions: 不得声称已经播放、暂停或切歌；只有注册媒体 Capability 后才能产生执行计划。
+  fallback: {decision: Fail, reason_code: capability_unavailable, reply: 当前官方配置尚未接入媒体执行能力。}

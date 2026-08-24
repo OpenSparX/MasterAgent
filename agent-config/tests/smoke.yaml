@@ -1,0 +1,63 @@
+api_version: masteragent.ai/v1alpha1
+kind: ConfigTestSuite
+metadata:
+  id: official-smoke-tests
+  version: 1
+
+spec:
+  cases:
+    - id: rule.front_fan_high
+      input: 前排风速调高
+      expect:
+        path: rule
+        decision: ExecutionPlan
+        actions:
+          - type: CallTool
+            capability: climate.set_auto_fan_speed
+            arguments: {location: FRONT, mode: HIGH}
+        cloud_requested: false
+
+    - id: rule.fan_missing_mode
+      input: 帮我调一下风速
+      expect:
+        path: rule
+        decision: Ask
+        slot: mode
+        action_count: 0
+
+    - id: rule.external_circulation
+      input: 打开外循环
+      expect:
+        path: rule
+        decision: ExecutionPlan
+        actions:
+          - type: CallTool
+            capability: climate.set_air_circulation_mode
+            arguments: {mode: EXTERNAL}
+
+    - id: model.cabin_comfort
+      input: 车里有点闷，帮我舒服点
+      expect:
+        allowed_skills: [scenario.cabin_comfort_adjustment]
+        allowed_action_count_max: 2
+        allowed_capabilities:
+          - climate.set_air_circulation_mode
+          - climate.set_auto_fan_speed
+
+    - id: agent.trip_plan
+      input: 请帮我规划明天去机场的行程
+      expect:
+        allowed_skills: [skill.trip_planning]
+        allowed_agents: [trip-agent]
+        action: com_sgm_agent_trip_plan
+
+    - id: unavailable.media
+      input: 播放一首歌
+      expect:
+        forbidden_decisions: [ExecutionPlan]
+        reason: official_bundle_has_no_media_provider
+
+    - id: cloud.default_off
+      input: 这个问题必须上云处理
+      expect:
+        cloud_allowed: false

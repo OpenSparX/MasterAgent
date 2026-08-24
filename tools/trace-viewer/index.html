@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MasterAgent 实时链路控制台</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="debug.css">
+</head>
+<body>
+  <header>
+    <div><span class="eyebrow">MASTERAGENT 本地开发工具</span><h1>实时链路控制台</h1></div>
+    <div class="header-actions"><span id="connection" class="badge">正在连接本地服务</span><label class="secondary">导入历史链路<input id="file" type="file" accept="application/json,.json"></label></div>
+  </header>
+  <main>
+    <section class="composer panel">
+      <div class="composer-copy"><h2>直接和 MasterAgent 对话</h2><p>发送后，下方会实时出现规则匹配、模型推理、端云仲裁和能力执行过程。</p></div>
+      <form id="request-form">
+        <textarea id="request-text" maxlength="16000" required placeholder="例如：请把前排自动风速设置为高"></textarea>
+        <button id="send" type="submit">发送并观察链路</button>
+      </form>
+      <div id="runtime-config" class="runtime-config"></div>
+      <div class="debug-warning"><strong>本地调试模式</strong>　面板会显示原始请求、召回记忆、完整模型 Prompt 和模型原始输出。请勿在生产环境启用，也不要分享包含隐私的运行目录。</div>
+    </section>
+
+    <section class="summary">
+      <div><small>运行状态</small><strong id="run-status">等待输入</strong></div>
+      <div><small>链路步骤</small><strong id="event-count">0</strong></div>
+      <div><small>当前耗时</small><strong id="duration">0 毫秒</strong></div>
+      <div><small>最终结果</small><strong id="result">尚未完成</strong></div>
+    </section>
+
+    <section class="workspace">
+      <aside class="conversation panel">
+        <div class="section-title"><span>对话</span><small id="trace-id">尚无链路</small></div>
+        <div id="messages" class="messages"><div class="hint">输入一个请求，回复和执行过程会同时显示。</div></div>
+      </aside>
+      <section class="flow panel">
+        <div class="section-title"><span>实时执行过程</span><small>按发生顺序更新</small></div>
+        <ol id="timeline" class="timeline"><li class="hint">等待请求</li></ol>
+      </section>
+      <article id="detail" class="detail panel">
+        <div class="section-title"><span>步骤详情</span><small>本地原始调试内容</small></div>
+        <p class="hint">点击中间任意步骤，查看它收到什么、产出什么以及为何这样决策。</p>
+      </article>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

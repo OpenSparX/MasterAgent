@@ -1,0 +1,55 @@
+api_version: masteragent.ai/v1alpha1
+kind: ModelProfile
+metadata:
+  id: model.local.intent.qwen2_5_3b
+  version: 1
+  display_name: Qwen2.5-3B 本地意图模型
+  maturity: experimental
+
+spec:
+  enabled: true
+  role: intent
+  location: on_device
+  reality: real
+  runtime:
+    type: llama_cpp
+    mode: attach_or_spawn
+    endpoint_ref: SPARX_LLAMA_ENDPOINT
+    default_endpoint: 127.0.0.1:8080
+  artifact:
+    source: local_or_registry
+    format: gguf
+    model_id: qwen2.5-3b-instruct-q4_k_m
+    path_ref: SPARX_MODEL
+    registry:
+      type: huggingface
+      repository: Qwen/Qwen2.5-3B-Instruct-GGUF
+      file: qwen2.5-3b-instruct-q4_k_m.gguf
+    expected_sha256: ""
+  inference:
+    context_length: 4096
+    max_output_tokens: 1024
+    temperature: 0
+    top_p: 1
+    seed: 42
+    streaming: false
+  protocol:
+    prompt_profile: prompts/intent-system.md
+    output_schema: prompts/decision-protocol.schema.json
+    response_format: json_object
+    max_model_calls: 2
+  limits:
+    timeout_ms: 120000
+    max_concurrency: 1
+  activation:
+    require_resolved_artifact: true
+    fail_if_explicit_and_unavailable: true
+  validation:
+    required_test_suites: [official-smoke-tests, intent-json-protocol]
+    thresholds:
+      protocol_valid_rate: 0.98
+      unknown_capability_rate: 0
+      false_execution_claim_rate: 0
+  known_limitations:
+    - 真实链路已接通，但 3B 模型对当前两阶段严格 JSON 协议的遵从率尚未达到发布门槛。
+    - 模型可能以 REPLY 伪造副作用成功；当前本地 Validator 会以 INTENT_MODEL_FALSE_EXECUTION_CLAIM 拒绝。

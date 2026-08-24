@@ -1,0 +1,34 @@
+api_version: masteragent.ai/v1alpha1
+kind: ObservabilityPolicy
+
+metadata:
+  id: official-observability
+  version: 1
+
+spec:
+  enabled: true
+  mode: safe
+  trace:
+    record_skipped_stages: true
+    max_events_per_trace: 1000
+    include_timing: true
+    include_config_snapshot: true
+  payloads:
+    default: summary_and_digest
+    allow_raw_user_input: false
+    allow_raw_model_prompt: false
+    allow_raw_model_output: false
+    allow_credentials: false
+    max_inline_bytes: 4096
+  storage:
+    sink: data_log
+    format: jsonl
+    retention_days: 7
+  viewer:
+    enabled: true
+    allow_raw_payloads: false
+  exporters:
+    otlp:
+      enabled: false
+      endpoint_ref: MASTERAGENT_OTLP_ENDPOINT
+

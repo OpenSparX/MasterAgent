@@ -1,0 +1,32 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: skill.general_assistant
+  version: 1
+  display_name: 通用对话与澄清
+  domain: conversation
+  tags: [回复, 澄清, 不支持]
+
+spec:
+  enabled: true
+  summary: 在没有可执行能力时提供简洁回复、澄清或明确失败，不声称已执行操作。
+  triggers:
+    examples: [解释一个概念, 帮我确认一下, 这个功能支持吗]
+  slots:
+    optional: [topic, target, constraint]
+  allowed_context_sources:
+    - memory.short_term_context
+    - skill.match_candidates
+  allowed_capabilities:
+    read: []
+    write: []
+  allowed_agents: []
+  planning:
+    max_queries: 2
+    max_actions: 0
+    instructions: 不需要执行时使用 Reply；缺少关键信息时使用 Ask；不得制造 Capability。
+  fallback:
+    decision: Fail
+    reason_code: unsupported
+    reply: 当前配置包没有可安全执行该请求的能力。
+

@@ -1,0 +1,104 @@
+api_version: masteragent.ai/v1alpha1
+kind: ContextSourceSet
+metadata:
+  id: official-context-sources
+  version: 1
+
+spec:
+  sources:
+    - id: memory.short_term_context
+      version: 1
+      enabled: true
+      provider:
+        type: internal
+        capability: memory.getContext
+      read_only: true
+      input_schema:
+        type: object
+        additionalProperties: false
+        properties:
+          scope: {type: string, enum: [short_term]}
+          request_id: {type: string}
+        required: [scope, request_id]
+      access:
+        allowed_skills: ["*"]
+        required_permissions: []
+      freshness: {max_age_ms: 0, meaning: frozen_for_current_turn}
+      limits: {timeout_ms: 1000, max_result_bytes: 16384}
+      privacy:
+        classification: conversation_memory
+        cloud_allowed: false
+        redaction: minimal_summary_only
+
+    - id: state.vehicle
+      version: 1
+      enabled: true
+      provider:
+        type: preprocess_state
+        capability: preprocess.queryRuntimeState
+        state_type: VEHICLE
+      read_only: true
+      allowed_fields: [speed_kmh, engine_on, is_parked, battery_soc]
+      access:
+        allowed_skills: [scenario.cabin_comfort_adjustment, skill.trip_planning, scenario.trip_time_priority_planning, scenario.trip_multi_stop_arrangement, scenario.trip_weather_and_road_avoidance]
+        required_permissions: [vehicle.state.read]
+      freshness: {max_age_ms: 3000}
+      limits: {timeout_ms: 1000, max_result_bytes: 4096}
+      privacy:
+        classification: vehicle_state
+        cloud_allowed: true
+        redaction: allowlisted_fields_only
+
+    - id: state.environment
+      version: 1
+      enabled: true
+      provider:
+        type: preprocess_state
+        capability: preprocess.queryRuntimeState
+        state_type: ENVIRONMENT
+      read_only: true
+      allowed_fields: [outside_temperature, weather]
+      access:
+        allowed_skills: [scenario.cabin_comfort_adjustment, skill.trip_planning, scenario.trip_time_priority_planning, scenario.trip_multi_stop_arrangement, scenario.trip_weather_and_road_avoidance, navigation.start]
+        required_permissions: []
+      freshness: {max_age_ms: 300000}
+      limits: {timeout_ms: 1000, max_result_bytes: 4096}
+      privacy:
+        classification: environment_state
+        cloud_allowed: true
+        redaction: allowlisted_fields_only
+
+    - id: skill.match_candidates
+      version: 1
+      enabled: true
+      provider:
+        type: internal
+        capability: skill.matchSkill
+      read_only: true
+      access:
+        allowed_skills: ["*"]
+        required_permissions: []
+      freshness: {max_age_ms: 0, meaning: catalog_snapshot_bound}
+      limits: {timeout_ms: 500, max_result_bytes: 16384, max_items: 8}
+      privacy:
+        classification: public_configuration
+        cloud_allowed: true
+        redaction: summary_only
+
+    - id: capability.read_only_gateway
+      version: 1
+      enabled: true
+      provider:
+        type: internal
+        capability: atomic.queryReadOnly
+      read_only: true
+      access:
+        allowed_skills: ["*"]
+        required_permissions: []
+      freshness: {max_age_ms: 0, meaning: provider_observation}
+      limits: {timeout_ms: 1000, max_result_bytes: 8192}
+      privacy:
+        classification: capability_result
+        cloud_allowed: false
+        redaction: policy_defined
+      note: 当前官方 Capability 均为写能力，因此此网关存在但没有可调用的官方只读 MCP Tool。

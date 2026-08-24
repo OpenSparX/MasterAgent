@@ -1,0 +1,18 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.driver_state_care
+  version: 1
+  display_name: 驾驶状态关怀
+  domain: safety
+  tags: [困倦, 紧张, 驾驶安全, 休息]
+spec:
+  enabled: true
+  summary: 对疲劳、紧张或状态不稳提供简短的安全优先建议。
+  triggers: {examples: [我有点困, 我心里有点慌, 提醒我稳着点]}
+  slots: {optional: [risk_type, severity]}
+  allowed_context_sources: [state.vehicle]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: []
+  planning: {max_queries: 1, max_actions: 0, instructions: 安全优先、输出简短；当前没有安全控制 Tool，不能声称车辆已采取动作。}
+  fallback: {decision: Reply, reply: 请优先减速并在安全地点停车休息，必要时寻求帮助。}

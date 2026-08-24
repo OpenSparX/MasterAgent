@@ -1,0 +1,98 @@
+api_version: masteragent.ai/v1alpha1
+kind: CapabilitySet
+metadata:
+  id: official-capabilities
+  version: 1
+  domain: climate
+
+spec:
+  capabilities:
+    - id: climate.set_air_circulation_mode
+      version: 1
+      enabled: true
+      display_name: 设置空气循环模式
+      object: air_circulation
+      operation: set
+      aliases: [内循环, 外循环, 自动循环]
+      provider:
+        type: mcp
+        id: deterministic-climate-provider
+        tool: com_sgm_service_climate_setAirCirculationMode
+      input_schema:
+        type: object
+        additionalProperties: false
+        required: [mode]
+        properties:
+          mode:
+            type: string
+            enum: [INTERNAL, EXTERNAL, AUTO]
+      output_schema:
+        type: object
+        additionalProperties: false
+        required: [success, appliedMode, errorCode]
+        properties:
+          success: {type: boolean}
+          appliedMode: {type: string, enum: [INTERNAL, EXTERNAL, AUTO]}
+          errorCode: {type: string}
+      annotations:
+        read_only: false
+        side_effect: true
+        destructive: false
+        idempotent: true
+        risk_level: low
+      permissions: [vehicle.climate.write]
+      execution:
+        timeout_ms: 3000
+        max_attempts: 2
+        idempotency_policy: TARGET_STATE
+        completion_policy: STATE_VERIFIED
+        cancel_model: SAFE_POINT
+        supports_preemption: true
+        supports_reconcile: true
+        retryable_errors: [PROVIDER_EXECUTION_FAILED, CONFIRMED_NOT_EXECUTED]
+
+    - id: climate.set_auto_fan_speed
+      version: 1
+      enabled: true
+      display_name: 设置自动空调风速
+      object: fan
+      operation: set
+      aliases: [风速, 风量, 前排风速, 后排风速]
+      provider:
+        type: mcp
+        id: deterministic-climate-provider
+        tool: com_sgm_service_climate_setAutoFanSpeed
+      input_schema:
+        type: object
+        additionalProperties: false
+        required: [location, mode]
+        properties:
+          location: {type: string, enum: [FRONT, REAR]}
+          mode: {type: string, enum: [LOW, NORMAL, HIGH]}
+      output_schema:
+        type: object
+        additionalProperties: false
+        required: [success, appliedLocation, appliedMode, errorCode]
+        properties:
+          success: {type: boolean}
+          appliedLocation: {type: string, enum: [FRONT, REAR]}
+          appliedMode: {type: string, enum: [LOW, NORMAL, HIGH]}
+          errorCode: {type: string}
+      annotations:
+        read_only: false
+        side_effect: true
+        destructive: false
+        idempotent: true
+        risk_level: low
+      permissions: [vehicle.climate.write]
+      resources: [location]
+      execution:
+        timeout_ms: 3000
+        max_attempts: 2
+        idempotency_policy: TARGET_STATE
+        completion_policy: STATE_VERIFIED
+        cancel_model: SAFE_POINT
+        supports_preemption: true
+        supports_reconcile: true
+        retryable_errors: [PROVIDER_EXECUTION_FAILED, CONFIRMED_NOT_EXECUTED]
+

@@ -1,0 +1,46 @@
+api_version: masteragent.ai/v1alpha1
+kind: ModelProfile
+metadata:
+  id: model.cloud.intent.openai_compatible
+  version: 1
+  display_name: OpenAI-compatible 云端意图模型
+
+spec:
+  enabled: false
+  role: intent
+  location: cloud
+  reality: cloud
+  runtime:
+    type: openai_compatible
+    endpoint_ref: SPARX_CLOUD_MODEL_ENDPOINT
+    credential_ref: SPARX_CLOUD_MODEL_API_KEY
+  model:
+    name_ref: SPARX_CLOUD_MODEL_NAME
+  inference:
+    max_input_tokens: 8192
+    max_output_tokens: 1024
+    temperature: 0
+    top_p: 1
+    streaming: false
+  protocol:
+    prompt_profile: prompts/intent-system.md
+    output_schema: prompts/decision-protocol.schema.json
+    response_format: json_object
+  limits:
+    timeout_ms: 15000
+    max_concurrency: 4
+  privacy:
+    accepted_data_classes: [current_turn, intent_summary, public_configuration, allowlisted_vehicle_state]
+    forbidden_data_classes: [raw_memory_journal, credentials, contacts, precise_location_history]
+  activation:
+    require_resolved_endpoint: true
+    require_resolved_credential: true
+    require_explicit_consent_policy: true
+    fail_if_explicit_and_unavailable: true
+  validation:
+    required_test_suites: [official-smoke-tests, intent-json-protocol, cloud-request-contract]
+    thresholds:
+      protocol_valid_rate: 0.99
+      unknown_capability_rate: 0
+      false_execution_claim_rate: 0
+

@@ -1,0 +1,53 @@
+api_version: masteragent.ai/v1alpha1
+kind: ModelRoutingPolicy
+metadata:
+  id: official-model-routing
+  version: 1
+
+spec:
+  profile: development
+  roles:
+    intent:
+      default: model.local.intent.mock
+      on_device_candidates:
+        - model.local.intent.qwen2_5_3b
+        - model.local.intent.mock
+      cloud_candidates:
+        - model.cloud.intent.fake
+        - model.cloud.intent.openai_compatible
+      explicit_override_first: true
+      forbid_silent_fallback_after_explicit_selection: true
+    classifier:
+      default: model.local.classifier.deterministic
+      on_device_candidates: [model.local.classifier.deterministic]
+
+  order:
+    - deterministic_rule
+    - local_classifier
+    - local_intent_model
+    - cloud_arbiter
+    - cloud_intent_model
+    - local_decision_validator
+
+  cloud_fallback:
+    enabled: false
+    max_attempts: 1
+    require_consent: true
+    allowed_reasons:
+      - LOCAL_CAPABILITY_INSUFFICIENT
+      - LOCAL_CONTEXT_LIMIT_EXCEEDED
+      - COMPLEX_REASONING_REQUIRED
+      - REALTIME_KNOWLEDGE_REQUIRED
+      - INTENT_FIRST_INFERENCE_PROTOCOL_INVALID
+      - INTENT_MODEL_PROTOCOL_INVALID
+      - INTENT_MODEL_FALSE_EXECUTION_CLAIM
+
+  deadlines:
+    reserve_for_cloud_ms: 15000
+    reserve_for_local_validation_ms: 500
+    reserve_for_execution_ms: 1000
+
+  production_requirements:
+    forbid_simulated_models: true
+    require_model_digest: true
+    require_protocol_evaluation: true

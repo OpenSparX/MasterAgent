@@ -6,6 +6,7 @@
 #include "master_agent/runtime/master_agent_runtime.h"
 
 #include "master_agent/agent_service/intent_query_gateway.h"
+#include "master_agent/inference/debug_recording_model_runtime.h"
 
 #include <algorithm>
 #include <cctype>
@@ -61,9 +62,19 @@ MasterAgentRuntime::create(
     const std::filesystem::path& runtime_directory,
     std::shared_ptr<IRuntimeClock> clock,
     std::uint32_t simulated_work_units) {
+    MasterAgentRuntimeOptions options;
+    options.clock = std::move(clock);
+    options.simulated_work_units = simulated_work_units;
+    return create(runtime_directory, std::move(options));
+}
+
+Result<std::shared_ptr<MasterAgentRuntime>>
+MasterAgentRuntime::create(
+    const std::filesystem::path& runtime_directory,
+    MasterAgentRuntimeOptions options) {
     auto runtime = std::shared_ptr<MasterAgentRuntime>(
         new MasterAgentRuntime());
-    runtime->clock_ = clock ? std::move(clock)
+    runtime->clock_ = options.clock ? std::move(options.clock)
                             : std::make_shared<SystemRuntimeClock>();
     const auto boot =
         "boot-" + std::to_string(runtime->clock_->utcNowMs()) + "-" +
@@ -135,9 +146,17 @@ MasterAgentRuntime::create(
         memory_client, runtime->clock_);
     runtime->kv_cache_ = std::make_shared<kv_cache::KvCacheManager>(
         runtime->clock_, runtime->ids_);
-    runtime->model_runtime_ =
-        std::make_shared<inference::MockModelRuntime>(
-            simulated_work_units);
+    runtime->model_runtime_ = options.model_runtime
+        ? std::move(options.model_runtime)
+        : std::static_pointer_cast<inference::IModelRuntime>(
+              std::make_shared<inference::MockModelRuntime>(
+                  options.simulated_work_units));
+    if (!options.local_debug_artifact_directory.empty()) {
+        runtime->model_runtime_ =
+            std::make_shared<inference::DebugRecordingModelRuntime>(
+                runtime->model_runtime_,
+                options.local_debug_artifact_directory / "model_io.jsonl");
+    }
     runtime->dispatch_ =
         std::make_shared<agent_dispatch::AgentDispatch>(
             runtime_directory / "agent_dispatch",
@@ -166,7 +185,7 @@ MasterAgentRuntime::create(
     const auto tool_status = runtime->atomic_->registerTools(
         atomic_service::defaultClimateMcpTools(),
         atomic_service::defaultClimateRuntimePolicies(
-            simulated_work_units),
+            options.simulated_work_units),
         runtime->climate_provider_, bootstrap);
     if (!tool_status.ok) {
         return Result<std::shared_ptr<MasterAgentRuntime>>::Failure(
@@ -182,7 +201,7 @@ MasterAgentRuntime::create(
     runtime->trip_agent_ =
         std::make_shared<sub_agents::DeterministicSubAgent>(
             trip_manifest, runtime->clock_, runtime->ids_,
-            simulated_work_units);
+            options.simulated_work_units);
     const auto agent_status =
         runtime->dispatch_->registerAgent(runtime->trip_agent_, bootstrap);
     if (!agent_status.ok) {
@@ -213,12 +232,26 @@ MasterAgentRuntime::create(
             runtime->memory_,
             runtime->skill_, runtime->atomic_,
             runtime->clock_);
+    std::shared_ptr<cloud::ICloudArbiter> cloud_arbiter;
+    std::shared_ptr<cloud::ICloudContextBuilder> cloud_context;
+    std::shared_ptr<cloud::ICloudModelRuntime> cloud_runtime;
+    if (options.enable_fake_cloud_fallback) {
+        cloud::CloudPolicy cloud_policy;
+        cloud_policy.enabled = true;
+        cloud_policy.consent_preapproved = true;
+        cloud_arbiter = cloud::createDeterministicCloudArbiter(
+            runtime->clock_, std::move(cloud_policy));
+        cloud_context = cloud::createMinimalCloudContextBuilder();
+        cloud_runtime = cloud::createFakeCloudModelRuntime();
+    }
     runtime->intent_ = std::make_shared<intent::IntentEngine>(
         runtime->clock_, runtime->ids_, runtime->skill_, runtime->prompt_,
         runtime->inference_,
         intent::createDeterministicMockBgeClassifier(
             runtime->clock_),
-        std::move(intent_queries));
+        std::move(intent_queries), nullptr,
+        std::move(cloud_arbiter), std::move(cloud_context),
+        std::move(cloud_runtime), options.intent_model_profile_id);
     runtime->orchestrator_ =
         std::make_shared<orchestrator::Orchestrator>(
             runtime->clock_, runtime->ids_, runtime->atomic_,
@@ -228,7 +261,12 @@ MasterAgentRuntime::create(
         std::make_shared<agent_service::AgentService>(
             runtime->clock_, runtime->ids_, runtime->preprocess_,
             runtime->memory_, runtime->intent_, runtime->orchestrator_,
-            runtime->atomic_, runtime->log_, runtime->exceptions_);
+            runtime->atomic_, runtime->log_, runtime->exceptions_,
+            options.config_snapshot_id, runtime->inference_,
+            runtime->dispatch_,
+            options.local_debug_artifact_directory.empty()
+                ? std::filesystem::path{}
+                : options.local_debug_artifact_directory / "pipeline.jsonl");
     return Result<std::shared_ptr<MasterAgentRuntime>>::Success(
         std::move(runtime));
 }
@@ -399,9 +437,15 @@ MasterAgentRuntime::climateProvider() const {
     return climate_provider_;
 }
 
-std::shared_ptr<inference::MockModelRuntime>
+std::shared_ptr<inference::IModelRuntime>
 MasterAgentRuntime::modelRuntime() const {
     return model_runtime_;
+}
+
+std::shared_ptr<inference::MockModelRuntime>
+MasterAgentRuntime::mockModelRuntime() const {
+    return std::dynamic_pointer_cast<inference::MockModelRuntime>(
+        model_runtime_);
 }
 
 }  // namespace master_agent::runtime

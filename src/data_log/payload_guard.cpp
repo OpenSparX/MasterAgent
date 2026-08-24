@@ -129,6 +129,78 @@ bool DataLogService::containsForbiddenPayload(
             return false;
         }
 
+        // The public Trace projection is deliberately metadata-only.  It may
+        // carry closed scalar facts and digests, never arbitrary text.  Event
+        // names are also closed here so a new producer cannot opt itself into
+        // this path merely by choosing safe-looking JSON keys.
+        const std::set<std::string> trace_event_types = {
+            "TURN_ACCEPTED", "CONFIG_SNAPSHOT_BOUND", "PREPROCESS_COMPLETED",
+            "MEMORY_CONTEXT_RECALLED", "INTENT_SUBMITTED",
+            "RULE_ROUTE_RESOLVED", "RETRIEVAL_RESOLVED",
+            "LOCAL_INFERENCE_OBSERVED", "LOCAL_INFERENCE_SKIPPED",
+            "CLOUD_ESCALATION_REQUESTED", "CLOUD_ESCALATION_ALLOWED",
+            "CLOUD_ESCALATION_DENIED", "CLOUD_PAYLOAD_SEALED",
+            "CLOUD_FALLBACK_COMPLETED", "CLOUD_FALLBACK_FAILED",
+            "CLOUD_ARBITRATION_SKIPPED", "CLOUD_INFERENCE_SKIPPED",
+            "ATOMIC_EXECUTION_OBSERVED", "SUBAGENT_EXECUTION_OBSERVED",
+            "INTENT_DECISION_VALIDATED", "PLAN_COMMITTED",
+            "PLAN_OBSERVED", "TURN_COMPLETED", "TURN_FAILED",
+            "TURN_PENDING"};
+        if (trace_event_types.count(event_type) != 0) {
+            // Preserve the frozen v1 AgentService summary while accepting the
+            // richer, still value-closed trace projection below.
+            if (exactKeys({"content", "request_linked"}) &&
+                encoded.at("content").is_string() &&
+                encoded.at("content").get<std::string>() == "redacted" &&
+                encoded.at("request_linked").is_boolean()) {
+                return false;
+            }
+            const std::set<std::string> top_keys = {
+                "stage", "status", "input", "output", "privacy"};
+            const std::set<std::string> fact_keys = {
+                "type", "length", "digest", "context_blocks",
+                "capability_catalog_digest", "decision_type",
+                "reason_code", "reply_digest", "plan_id", "node_count",
+                "reply_length", "turn_summary", "pending",
+                "config_snapshot_id", "job_id", "model_stage", "model_id",
+                "runtime", "prompt_digest", "model_output_digest",
+                "prompt_tokens", "generated_tokens", "total_latency_ms",
+                "payload_digest"};
+            const std::set<std::string> execution_fact_keys = {
+                "tool_name", "execution_id", "side_effect_state",
+                "result_digest", "agent_id"};
+            if (!encoded.contains("stage") || !encoded.contains("status") ||
+                !safeString("stage") || !safeString("status")) {
+                return true;
+            }
+            for (const auto& item : encoded.items()) {
+                if (top_keys.count(item.key()) == 0) return true;
+                if (item.key() == "stage" || item.key() == "status" ||
+                    item.key() == "privacy") {
+                    if (!item.value().is_string() ||
+                        (!item.value().get<std::string>().empty() &&
+                         !safeReference(item.value().get<std::string>()))) {
+                        return true;
+                    }
+                    continue;
+                }
+                if (!item.value().is_object()) return true;
+                for (const auto& fact : item.value().items()) {
+                    if (fact_keys.count(fact.key()) == 0 &&
+                        execution_fact_keys.count(fact.key()) == 0) return true;
+                    if (fact.value().is_string()) {
+                        const auto& value = fact.value().get_ref<const std::string&>();
+                        if (!value.empty() && !safeReference(value)) return true;
+                    } else if (!fact.value().is_boolean() &&
+                               !fact.value().is_number_unsigned() &&
+                               !fact.value().is_number_integer()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         // AgentService's default summary is deliberately value-closed:
         // accepting an arbitrary "content" string would merely move the
         // plaintext leak behind a safe-looking key.

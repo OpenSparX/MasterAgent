@@ -36,7 +36,7 @@ static void printUsage() {
     demo              Run built-in demos (automotive, crash recovery, streaming)
     shell             Interactive session with a deployed agent
     plan              Build, validate, and visualize execution plans
-    trace             Inspect runtime execution traces (TaskEvent records)
+    trace             Inspect end-to-end MasterAgent traces
 
   Options:
     --help, -h        Show this help
@@ -47,7 +47,7 @@ static void printUsage() {
     sparx add skill climate_control
     sparx demo automotive              # 30-second killer demo
     sparx plan show plans/route.yaml   # visualize an execution plan
-    sparx trace show .sparx/trace.jsonl  # inspect a runtime trace
+    sparx trace show <runtime>/data_log/events.jsonl --last
     sparx run
     sparx deploy --device 1
     sparx doctor

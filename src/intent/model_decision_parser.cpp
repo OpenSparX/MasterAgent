@@ -6,7 +6,61 @@
 #include "include/intent_text_rules.h"
 #include "include/intent_deadline.h"
 
+#include <algorithm>
+#include <cctype>
+#include <initializer_list>
+
 namespace master_agent::intent {
+namespace {
+
+bool containsAny(
+    const std::string& text,
+    const std::initializer_list<const char*>& candidates) {
+    return std::any_of(
+        candidates.begin(), candidates.end(),
+        [&text](const char* candidate) {
+            return text.find(candidate) != std::string::npos;
+        });
+}
+
+bool hasUnverifiedEffectClaim(const std::string& reply) {
+    std::string ascii_lower = reply;
+    std::transform(
+        ascii_lower.begin(), ascii_lower.end(), ascii_lower.begin(),
+        [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+    const bool completion_claim = containsAny(
+        reply,
+        {u8"已经", u8"已为你", u8"已帮你", u8"已完成", u8"完成了",
+         u8"调整好了", u8"设置好了", u8"打开了", u8"关闭了",
+         u8"已调整", u8"已设置", u8"已打开", u8"已关闭",
+         u8"已切换", u8"已启动", u8"已停止", u8"已发送",
+         u8"已创建", u8"已删除", u8"已预订", u8"已购买",
+         u8"已支付"}) ||
+        containsAny(
+            ascii_lower,
+            {"has been set", "have been set", "has been adjusted",
+             "have been adjusted", "turned on", "turned off",
+             "i have set", "i've set", "completed successfully",
+             "booking is confirmed", "payment completed"});
+    if (!completion_claim) return false;
+
+    return containsAny(
+               reply,
+               {u8"设置", u8"调整", u8"打开", u8"关闭", u8"切换",
+                u8"启动", u8"停止", u8"发送", u8"创建", u8"删除",
+                u8"预订", u8"购买", u8"支付", u8"温度", u8"风量",
+                u8"空调", u8"循环", u8"座椅", u8"车窗", u8"导航",
+                u8"音乐"}) ||
+           containsAny(
+               ascii_lower,
+               {"set", "adjust", "turn", "send", "create", "delete",
+                "book", "purchase", "payment", "temperature", "fan",
+                "climate", "seat", "window", "navigation", "music"});
+}
+
+}  // namespace
 
 Result<IntentOrchestrationResult>
 IntentEngine::parseModelDecision(
@@ -45,6 +99,12 @@ IntentEngine::parseModelDecision(
                 decoded.at("reply").get<std::string>();
             if (reply.empty() || reply.size() > 2048) {
                 throw std::runtime_error("REPLY is outside bounds");
+            }
+            if (hasUnverifiedEffectClaim(reply)) {
+                return Result<IntentOrchestrationResult>::Failure(
+                    Status::Error(
+                        "intent", "INTENT_MODEL_FALSE_EXECUTION_CLAIM",
+                        "REPLY claimed an effect without execution evidence"));
             }
             result.outcome_type = IntentOutcomeType::DirectReply;
             result.user_reply = reply;

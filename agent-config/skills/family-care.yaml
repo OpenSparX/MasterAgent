@@ -1,0 +1,18 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.family_child_and_elderly_care
+  version: 1
+  display_name: 儿童与老人照护
+  domain: safety
+  tags: [儿童, 老人, 提醒, 舒适]
+spec:
+  enabled: true
+  summary: 围绕儿童与老人同行提供保护性建议和最小澄清。
+  triggers: {examples: [孩子睡着了, 老人今天一起, 别把孩子忘车里]}
+  slots: {optional: [person, trigger, destination]}
+  allowed_context_sources: [memory.short_term_context, state.vehicle]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: []
+  planning: {max_queries: 2, max_actions: 0, instructions: 不得假设当前存在提醒、乘员识别或车门控制能力。}
+  fallback: {decision: Ask, reply: 你希望在什么条件下提醒，以及提醒哪件事？}

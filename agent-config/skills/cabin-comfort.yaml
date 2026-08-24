@@ -1,0 +1,40 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: scenario.cabin_comfort_adjustment
+  version: 1
+  display_name: 座舱舒适度调节
+  domain: climate
+  tags: [舒适度, 空调, 通风, 风量, 循环]
+
+spec:
+  enabled: true
+  summary: 对“闷、冷、热、不舒服”等模糊体感进行保守分析、必要澄清和受控调节。
+  triggers:
+    examples:
+      - 车里有点闷，帮我舒服点
+      - 空气不太好
+      - 车里不太舒服
+  slots:
+    optional: [seat, comfort_problem, preferred_strength]
+  allowed_context_sources:
+    - memory.short_term_context
+    - state.vehicle
+    - state.environment
+    - skill.match_candidates
+  allowed_capabilities:
+    read: []
+    write:
+      - climate.set_air_circulation_mode
+      - climate.set_auto_fan_speed
+  allowed_agents: []
+  planning:
+    max_queries: 4
+    max_actions: 2
+    prefer_ask_when_ambiguous: true
+    instructions: |
+      优先识别用户在描述温度、空气还是风量问题。信息不足时只问一个最必要问题。
+      执行动作必须来自 allowed_capabilities，不能假设本配置包未声明的温度或车窗能力。
+  fallback:
+    decision: Ask
+    reply: 你主要是觉得闷、太热、太冷，还是风量不合适？

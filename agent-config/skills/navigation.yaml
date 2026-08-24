@@ -1,0 +1,22 @@
+api_version: masteragent.ai/v1alpha1
+kind: Skill
+metadata:
+  id: navigation.start
+  version: 1
+  display_name: 导航意图理解
+  domain: navigation
+  tags: [导航, 目的地, 路线]
+spec:
+  enabled: true
+  summary: 理解导航和目的地诉求；当前官方包没有本地导航 MCP Provider。
+  triggers:
+    examples: [导航到公司, 去机场, 开始导航]
+  slots: {required: [destination], optional: [route_preference]}
+  allowed_context_sources: [memory.short_term_context, state.environment]
+  allowed_capabilities: {read: [], write: []}
+  allowed_agents: [trip-agent]
+  planning:
+    max_queries: 2
+    max_actions: 1
+    instructions: 可以将规划任务交给 trip-agent，但不能声称已经启动真实导航。
+  fallback: {decision: Ask, reply: 请告诉我明确的目的地。}

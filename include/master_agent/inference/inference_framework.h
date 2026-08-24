@@ -399,6 +399,8 @@ class IInferenceFramework {
 public:
     virtual ~IInferenceFramework() = default;
 
+    virtual std::string runtimeTag() const { return "mock-runtime"; }
+
     /**
      * Validates and admits a job. Acceptance confirms queue ownership only;
      * callers obtain terminal output through queryInference().
@@ -483,6 +485,8 @@ public:
         std::size_t replica_count = 2,
         std::shared_ptr<IInferenceParentLineageValidator>
             lineage_validator = nullptr);
+
+    std::string runtimeTag() const override;
 
     InferenceAcceptance submitInference(
         const InferenceRequest& request,

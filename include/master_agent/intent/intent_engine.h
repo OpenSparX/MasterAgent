@@ -18,6 +18,7 @@
 
 #include "master_agent/atomic_service/atomic_service.h"
 #include "master_agent/common/types.h"
+#include "master_agent/cloud/cloud_arbitration.h"
 #include "master_agent/inference/inference_framework.h"
 #include "master_agent/intent/intent_support.h"
 #include "master_agent/memory/memory_service.h"
@@ -296,6 +297,10 @@ public:
         const RuleSetArtifactRef& artifact,
         std::uint64_t expected_version,
         const CallContext& call) = 0;
+
+    /// Read-only observability projection; implementations without a cloud
+    /// path return an empty sequence.
+    virtual std::vector<cloud::CloudEvent> cloudEvents() const { return {}; }
 };
 
 class IntentEngine final : public IIntentEngine {
@@ -308,7 +313,11 @@ public:
         std::shared_ptr<inference::IInferenceFramework> inference,
         std::shared_ptr<IBgeIntentClassifier> bge = nullptr,
         std::shared_ptr<IIntentQueryExecutor> query_executor = nullptr,
-        std::shared_ptr<IIntentResultListener> result_listener = nullptr);
+        std::shared_ptr<IIntentResultListener> result_listener = nullptr,
+        std::shared_ptr<cloud::ICloudArbiter> cloud_arbiter = nullptr,
+        std::shared_ptr<cloud::ICloudContextBuilder> cloud_context = nullptr,
+        std::shared_ptr<cloud::ICloudModelRuntime> cloud_runtime = nullptr,
+        std::string model_profile_id = "mock-master-agent");
 
     ~IntentEngine() override;
 
@@ -336,6 +345,8 @@ public:
         const RuleSetArtifactRef& artifact,
         std::uint64_t expected_version,
         const CallContext& call) override;
+
+    std::vector<cloud::CloudEvent> cloudEvents() const override;
 
 private:
     IntentOrchestrationResult fromSkill(
@@ -372,6 +383,12 @@ private:
         const inference::InferenceOutput& output,
         const CallContext& call) const;
 
+    Result<IntentOrchestrationResult> tryCloudFallback(
+        const interaction::StandardRequest& request,
+        const IntentContext& context,
+        const CallContext& call,
+        const Status& local_failure);
+
     std::optional<IntentOrchestrationResult> fromBge(
         const interaction::StandardRequest& request,
         const IntentContext& context,
@@ -400,6 +417,11 @@ private:
     std::shared_ptr<IBgeIntentClassifier> bge_;
     std::shared_ptr<IIntentQueryExecutor> query_executor_;
     std::shared_ptr<IIntentResultListener> result_listener_;
+    std::shared_ptr<cloud::ICloudArbiter> cloud_arbiter_;
+    std::shared_ptr<cloud::ICloudContextBuilder> cloud_context_;
+    std::shared_ptr<cloud::ICloudModelRuntime> cloud_runtime_;
+    std::string model_profile_id_;
+    std::vector<cloud::CloudEvent> cloud_events_;
     mutable std::mutex jobs_mutex_;
     std::condition_variable jobs_cv_;
     std::map<std::string, JobRecord> jobs_;
