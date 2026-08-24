@@ -84,7 +84,7 @@ c++ -std=c++17 -O2 -I../../cli/include eval_formal.cpp ../../cli/src/sparx_forma
 
 POR currently adds overhead (~30-70% slower) without reducing state space for
 these topologies. The fan-out plans assign different services to each worker,
-making the independence heuristic unable to reduce. POR would benefit from:
+making the independence heuristic unable to reduce the state space. POR would benefit from:
 - Shared-resource workloads (same service, same tool)
 - Workloads with true data-independent branches
 
