@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import sqlite3
+from socketserver import TCPServer
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -17,6 +18,15 @@ def initialize(path):
         db.execute('CREATE TABLE IF NOT EXISTS stock(sku TEXT PRIMARY KEY, quantity INTEGER NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS receipts(key TEXT PRIMARY KEY, input TEXT NOT NULL, result TEXT NOT NULL, status INTEGER NOT NULL)')
         db.execute("INSERT OR IGNORE INTO stock VALUES('widget',10)")
+
+
+class LoopbackServer(HTTPServer):
+    def server_bind(self):
+        # HTTPServer normally does a reverse-DNS lookup for server_name. This
+        # loopback-only service does not need DNS and must start offline too.
+        TCPServer.server_bind(self)
+        self.server_name = 'localhost'
+        self.server_port = self.server_address[1]
 
 
 def main():
@@ -96,7 +106,7 @@ def main():
                 return
             self.reply(status, result)
 
-    server = HTTPServer(('127.0.0.1', args.port), Handler)
+    server = LoopbackServer(('127.0.0.1', args.port), Handler)
     if args.ready_file:
         Path(args.ready_file).write_text(str(server.server_port))
     print(f'Inventory service listening on http://127.0.0.1:{server.server_port}', flush=True)

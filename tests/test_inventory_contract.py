@@ -38,15 +38,16 @@ def start(root, drop=False):
     if drop:
         command += ['--drop-first-response']
     process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    for _ in range(150):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
         if ready.exists():
             return process, 'http://127.0.0.1:' + ready.read_text()
         if process.poll() is not None:
             raise AssertionError(process.stderr.read().decode())
         time.sleep(0.02)
     process.terminate()
-    process.wait(timeout=5)
-    raise AssertionError('Service startup timed out')
+    _, errors = process.communicate(timeout=5)
+    raise AssertionError('Service startup timed out: ' + errors.decode())
 
 
 with tempfile.TemporaryDirectory(prefix='sparx-inventory-') as directory:

@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import threading
+from socketserver import TCPServer
 import time
 
 
@@ -40,7 +41,15 @@ class Server(http.server.BaseHTTPRequestHandler):
             pass
 
 
-server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Server)
+class LoopbackServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # Keep the local protocol fixture independent of DNS configuration.
+        TCPServer.server_bind(self)
+        self.server_name = 'localhost'
+        self.server_port = self.server_address[1]
+
+
+server = LoopbackServer(('127.0.0.1', 0), Server)
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
 try:
