@@ -14,7 +14,7 @@ harness:
   cloud_backend: "openai_compatible" # openai_compatible | mock
   arbiter: "cloud_prefer"            # cloud_prefer | latency_first | confidence | local_only
   confidence_scorer: "heuristic"     # heuristic
-  cloud_enabled: true                # Master switch for cloud path
+  cloud_enabled: false                # Master switch for cloud path
   trace_decisions: false             # Log every routing/arbitration decision
 
 # ─── Cloud Backend Configuration ─────────────────────────────────────────────

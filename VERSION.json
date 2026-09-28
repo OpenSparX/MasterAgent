@@ -1,9 +1,9 @@
 {
   "product": "OAK",
-  "version": "0.3.0",
+  "version": "0.4.0-alpha.3",
   "api_namespace": "master_agent",
   "cmake_target": "MasterAgent::Core",
-  "model_backends": ["llama_cpp", "mock"],
+  "model_backends": ["http_chat_completions", "custom_callback"],
   "default_topology": "single-process",
   "ipc_default": false
 }

@@ -2,6 +2,14 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
+set(MasterAgent_WITH_STORAGE OFF)
+if(@MASTER_AGENT_ENABLE_STORAGE@ AND NOT @_core_source_present@)
+    set(MasterAgent_WITH_STORAGE ON)
+    find_dependency(SQLite3)
+endif()
+if(@MASTER_AGENT_ENABLE_HTTP@)
+    find_dependency(CURL)
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/MasterAgentTargets.cmake")
 

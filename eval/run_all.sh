@@ -13,8 +13,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BUILD_DIR="${PROJECT_ROOT}/build"
-RESULTS_DIR="${SCRIPT_DIR}/results"
+BUILD_DIR="${SPARX_BUILD_DIR:-${PROJECT_ROOT}/build}"
+RESULTS_DIR="${SPARX_RESULTS_DIR:-${BUILD_DIR}/eval-results}"
 VERBOSE_FLAG=""
 
 for arg in "$@"; do
@@ -27,12 +27,11 @@ done
 # --- Build ---
 echo "=== Building evaluation binaries ==="
 mkdir -p "${BUILD_DIR}"
-cmake -S "${PROJECT_ROOT}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5
+cmake -S "${PROJECT_ROOT}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release -DBUILD_EVAL=ON 2>&1 | tail -5
 cmake --build "${BUILD_DIR}" --target eval_speculation eval_mesh eval_formal eval_learning eval_constrained -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 echo ""
 
 # --- Prepare results directory ---
-rm -rf "${RESULTS_DIR}"
 mkdir -p "${RESULTS_DIR}"
 
 EVALS=(
@@ -49,7 +48,7 @@ declare -a STATUSES=()
 
 # --- Run each evaluation ---
 for eval_name in "${EVALS[@]}"; do
-    BINARY="${BUILD_DIR}/${eval_name}"
+    BINARY="${BUILD_DIR}/eval/${eval_name}"
     OUTPUT_FILE="${RESULTS_DIR}/${eval_name}.txt"
 
     echo "--- Running ${eval_name} ---"
@@ -57,16 +56,16 @@ for eval_name in "${EVALS[@]}"; do
         if "${BINARY}" ${VERBOSE_FLAG} > "${OUTPUT_FILE}" 2>&1; then
             echo "  PASSED (output: ${OUTPUT_FILE})"
             STATUSES+=("PASS")
-            ((PASS_COUNT++))
+            PASS_COUNT=$((PASS_COUNT + 1))
         else
             echo "  FAILED (exit code $?, output: ${OUTPUT_FILE})"
             STATUSES+=("FAIL")
-            ((FAIL_COUNT++))
+            FAIL_COUNT=$((FAIL_COUNT + 1))
         fi
     else
         echo "  SKIPPED (binary not found: ${BINARY})"
         STATUSES+=("SKIP")
-        ((FAIL_COUNT++))
+        FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
 done
 
@@ -123,3 +122,6 @@ for eval_name in "${EVALS[@]}"; do
 done
 
 echo "Summary written to: ${SUMMARY}"
+
+# A skipped or failed evaluation must fail automation.
+[[ "$FAIL_COUNT" -eq 0 ]]

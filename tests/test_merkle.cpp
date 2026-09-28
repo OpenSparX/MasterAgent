@@ -1,5 +1,5 @@
 #include "../cli/include/sparx_mesh.h"
-#include <cassert>
+#include "check.h"
 #include <iostream>
 
 using namespace sparx::mesh;
@@ -41,14 +41,14 @@ int main() {
     std::cout << "Root A: " << digestA.root_hash << "\n";
     std::cout << "Root B: " << digestB.root_hash << "\n";
     std::cout << "Keys A: " << digestA.key_count << ", B: " << digestB.key_count << "\n";
-    assert(digestA.key_count == 3);
-    assert(digestB.key_count == 3);
+    CHECK(digestA.key_count == 3);
+    CHECK(digestB.key_count == 3);
     std::cout << "PASS: both trees have 3 keys\n";
 
     // Test 2: Compare with itself — no divergence
     auto selfDiff = merkleA.compare(digestA);
-    assert(selfDiff.divergent_keys.empty());
-    assert(selfDiff.nodes_matched == 1);  // root matched, skip all
+    CHECK(selfDiff.divergent_keys.empty());
+    CHECK(selfDiff.nodes_matched == 1);  // root matched, skip all
     std::cout << "PASS: self-compare → no divergence\n";
 
     // Test 3: Add a key to A only — causes divergence
@@ -58,7 +58,7 @@ int main() {
     merkleA.rebuild(mapA);
 
     auto newDigestA = merkleA.digest();
-    assert(newDigestA.key_count == 4);
+    CHECK(newDigestA.key_count == 4);
 
     // Compare: B's digest vs A's tree → should find divergence
     auto diff = merkleA.compare(digestB);
@@ -68,7 +68,7 @@ int main() {
     std::cout << "Sync efficiency: " << diff.sync_efficiency() << "\n";
     // The new key should show up in divergent keys
     // (may also include other keys in same bucket)
-    assert(diff.nodes_compared > 0);
+    CHECK(diff.nodes_compared > 0);
     std::cout << "PASS: divergence detected after mutation\n";
 
     // Test 4: Efficiency — with many keys, only divergent bucket is flagged
@@ -84,16 +84,16 @@ int main() {
     MerkleAntiEntropy merkleBig;
     merkleBig.rebuild(bigMap);
     auto bigDigest = merkleBig.digest();
-    assert(bigDigest.key_count == 100);
+    CHECK(bigDigest.key_count == 100);
 
     // Self-compare: O(1)
     auto bigSelf = merkleBig.compare(bigDigest);
-    assert(bigSelf.divergent_keys.empty());
-    assert(bigSelf.nodes_compared == 1);
+    CHECK(bigSelf.divergent_keys.empty());
+    CHECK(bigSelf.nodes_compared == 1);
     std::cout << "PASS: 100-key self-compare is O(1)\n";
 
     // Test 5: Bucket count is branching_factor^depth
-    assert(merkleBig.bucketCount() == 256);  // 16^2
+    CHECK(merkleBig.bucketCount() == 256);  // 16^2
     std::cout << "PASS: bucket count = " << merkleBig.bucketCount() << "\n";
 
     std::cout << "\nAll Merkle anti-entropy tests passed!\n";

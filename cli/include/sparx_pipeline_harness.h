@@ -64,7 +64,7 @@ struct HarnessConfig {
     ArbiterConfig arbiter_config;
 
     /// Master enable switch for cloud path.
-    bool cloud_enabled = true;
+    bool cloud_enabled = false;
 
     /// Trace/log every arbitration decision.
     bool trace_decisions = false;
@@ -157,7 +157,7 @@ public:
     void applyConfig(const HarnessConfig& config);
 
     /// Get current config (read-only).
-    const HarnessConfig& config() const { return config_; }
+    HarnessConfig config() const { std::lock_guard<std::mutex> lock(mutex_); return config_; }
 
     // ─── Execution ───
 
@@ -185,6 +185,8 @@ public:
     bool isReady() const;
 
 private:
+    std::shared_ptr<std::atomic<bool>> local_busy_ = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<bool>> cloud_busy_ = std::make_shared<std::atomic<bool>>(false);
     HarnessConfig config_;
     mutable std::mutex mutex_;
 
@@ -205,7 +207,6 @@ private:
     // Internal helpers
     void resolveActiveComponents();
     PreScoreSignals buildPreScoreSignals(const PipelineRequest& request) const;
-    bool shouldFireCloud(const ConfidenceScore& pre_score) const;
 };
 
 // ─── YAML Config Parser ─────────────────────────────────────────────────────

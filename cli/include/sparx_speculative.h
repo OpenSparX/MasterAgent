@@ -75,11 +75,11 @@ namespace sparx::speculation {
 struct IntentRecord {
     std::string intent_name;        // skill or inference category
     std::string raw_input;          // user's actual text
-    std::int64_t timestamp_utc;     // when it happened
-    std::uint8_t hour_of_day;       // 0-23, local time
-    std::uint8_t day_of_week;       // 0-6, Mon=0
-    bool was_deterministic;         // resolved without model?
-    std::uint32_t latency_ms;       // actual response time
+    std::int64_t timestamp_utc = 0;     // when it happened
+    std::uint8_t hour_of_day = 0;       // 0-23, local time
+    std::uint8_t day_of_week = 0;       // 0-6, Mon=0
+    bool was_deterministic = false;         // resolved without model?
+    std::uint32_t latency_ms = 0;       // actual response time
 };
 
 /// A prediction of what the user will likely ask next.

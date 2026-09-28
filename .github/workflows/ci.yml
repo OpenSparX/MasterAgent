@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, 'feat/**', 'fix/**']
+    branches: [main, develop, 'feat/**', 'fix/**', 'codex/**']
   pull_request:
     branches: [main, develop]
 
@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libcurl4-openssl-dev
+          sudo apt-get install -y cmake ninja-build libcurl4-openssl-dev libsqlite3-dev
 
       - name: Configure CMake
         run: |
@@ -48,38 +48,66 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --timeout 120
 
+      - name: Run all synthetic evaluations
+        run: bash eval/run_all.sh
+
+      - name: Verify SDK and CLI archive
+        run: bash scripts/package.sh build dist/sparx-sdk.tar.gz
+
       - name: Upload build artifacts
-        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: sparx-linux-x64
-          path: build/cli/sparx
+          name: sparx-sdk-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install clang-tidy
+      - name: Install analysis dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy libcurl4-openssl-dev libsqlite3-dev
+      - name: Configure compilation database
+        run: cmake -S . -B build-lint -DBUILD_EVAL=OFF -DCMAKE_BUILD_TYPE=Debug
+      - name: Analyze public runtime (blocking)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-tidy
+          clang-tidy -p build-lint \
+            --checks='-*,clang-analyzer-*,bugprone-use-after-move,bugprone-sizeof-expression' \
+            --warnings-as-errors='*' \
+            --header-filter='/(core|backends|include/master_agent/runtime|examples/inventory_agent)/' \
+            core/reference_runtime.cpp core/durable_store.cpp backends/http_model.cpp \
+            cli/src/reference_main.cpp examples/inventory_agent/main.cpp
 
-      - name: Run clang-tidy on Agent OS modules
+  sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libcurl4-openssl-dev libsqlite3-dev
+      - name: Build with ASan and UBSan
+        env:
+          CC: clang
+          CXX: clang++
         run: |
-          clang-tidy \
-            --checks='-*,bugprone-*,performance-*,modernize-*,-modernize-use-trailing-return-type' \
-            cli/src/sparx_agent_scheduler.cpp \
-            cli/src/sparx_context_manager.cpp \
-            cli/src/sparx_memory_manager.cpp \
-            cli/src/sparx_access_control.cpp \
-            cli/src/sparx_tool_registry.cpp \
-            -- -std=c++17 -Icli/include -Iinclude \
-               -Ithird_party/memory_short_term/include \
-               -Ithird_party \
-            || true  # Non-blocking for now
+          cmake -S . -B build-sanitize -DBUILD_EVAL=OFF -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+            -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
+          cmake --build build-sanitize --parallel 2 --target test_reference_runtime test_execution_context \
+            test_durable_runtime durable_probe sparx http_model_probe inventory_agent test_harness
+      - name: Runtime, network and recovery sanitizer contracts
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-sanitize --output-on-failure --timeout 90 -R 'test_reference_runtime|test_execution_context|test_durable_runtime|crash_recovery_contract|http_model_contract|inventory_service_contract|test_harness'
+      - name: Build and test without optional dependencies
+        run: |
+          cmake -S . -B build-minimal -DCMAKE_BUILD_TYPE=Release -DBUILD_EVAL=OFF \
+            -DMASTER_AGENT_ENABLE_HTTP=OFF -DMASTER_AGENT_ENABLE_STORAGE=OFF
+          cmake --build build-minimal --parallel 2
+          ctest --test-dir build-minimal --output-on-failure --timeout 90
 
   security-check:
     runs-on: ubuntu-latest

@@ -284,15 +284,11 @@ std::future<CloudResult> OpenAICompatBackend::inferAsync(
     const std::string& user_prompt,
     const std::string& system_prompt) const {
 
-    // Capture by value for thread safety
-    auto config = config_;
-    auto api_key = resolved_api_key_;
-    auto endpoint = config_.endpoint;
-    auto body = buildRequestBody(user_prompt, system_prompt);
-
-    return std::async(std::launch::async, [this, body]() {
-        return doHttpPost(body);
-    });
+    auto task = std::make_shared<std::packaged_task<CloudResult()>>(
+        [backend = *this, user_prompt, system_prompt] { return backend.infer(user_prompt, system_prompt); });
+    auto future = task->get_future();
+    std::thread([task] { (*task)(); }).detach();
+    return future;
 }
 
 void OpenAICompatBackend::inferWithCallback(
@@ -300,12 +296,9 @@ void OpenAICompatBackend::inferWithCallback(
     const std::string& system_prompt,
     CloudCallback callback) const {
 
-    auto body = buildRequestBody(user_prompt, system_prompt);
-
-    // Fire in a detached thread (harness manages lifetime via deadline)
-    std::thread([this, body, callback]() {
-        auto result = doHttpPost(body);
-        if (callback) callback(std::move(result));
+    std::thread([backend = *this, user_prompt, system_prompt, callback = std::move(callback)] {
+        try { auto result = backend.infer(user_prompt, system_prompt); if (callback) callback(std::move(result)); }
+        catch (...) { /* A callback exception must not terminate the host process. */ }
     }).detach();
 }
 
@@ -336,9 +329,11 @@ std::future<CloudResult> MockCloudBackend::inferAsync(
     const std::string& user_prompt,
     const std::string& system_prompt) const {
 
-    return std::async(std::launch::async, [this, user_prompt, system_prompt]() {
-        return infer(user_prompt, system_prompt);
-    });
+    auto task = std::make_shared<std::packaged_task<CloudResult()>>(
+        [backend = *this, user_prompt, system_prompt] { return backend.infer(user_prompt, system_prompt); });
+    auto future = task->get_future();
+    std::thread([task] { (*task)(); }).detach();
+    return future;
 }
 
 void MockCloudBackend::inferWithCallback(
@@ -346,9 +341,9 @@ void MockCloudBackend::inferWithCallback(
     const std::string& system_prompt,
     CloudCallback callback) const {
 
-    std::thread([this, user_prompt, system_prompt, callback]() {
-        auto result = infer(user_prompt, system_prompt);
-        if (callback) callback(std::move(result));
+    std::thread([backend = *this, user_prompt, system_prompt, callback]() {
+        try { auto result = backend.infer(user_prompt, system_prompt); if (callback) callback(std::move(result)); }
+        catch (...) { }
     }).detach();
 }
 

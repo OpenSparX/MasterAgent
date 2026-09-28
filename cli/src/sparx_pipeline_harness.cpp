@@ -25,6 +25,7 @@
 #include <future>
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 namespace sparx {
 namespace harness {
@@ -82,6 +83,11 @@ void PipelineHarness::loadConfig(const std::string& yaml_path) {
 }
 
 void PipelineHarness::resolveActiveComponents() {
+    active_prompt_engine_.reset();
+    active_cloud_backend_.reset();
+    active_arbiter_.reset();
+    active_scorer_.reset();
+    active_local_.reset();
     // Resolve prompt engine
     if (auto it = prompt_engines_.find(config_.prompt_engine); it != prompt_engines_.end()) {
         active_prompt_engine_ = it->second;
@@ -116,6 +122,7 @@ void PipelineHarness::setCloudEnabled(bool enabled) {
 }
 
 bool PipelineHarness::isCloudEnabled() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     return config_.cloud_enabled;
 }
 
@@ -138,6 +145,7 @@ void PipelineHarness::setActiveArbiter(const std::string& name) {
 }
 
 bool PipelineHarness::isReady() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     return active_prompt_engine_ != nullptr &&
            active_arbiter_ != nullptr &&
            active_scorer_ != nullptr &&
@@ -168,118 +176,112 @@ PreScoreSignals PipelineHarness::buildPreScoreSignals(
     return signals;
 }
 
-bool PipelineHarness::shouldFireCloud(const ConfidenceScore& pre_score) const {
-    if (!config_.cloud_enabled) return false;
-    if (!active_cloud_backend_ || !active_cloud_backend_->isReady()) return false;
 
-    // High confidence → skip cloud
-    if (pre_score.overall >= config_.confidence_thresholds.high) return false;
-
-    // Below high threshold → fire cloud
-    return true;
+namespace {
+// Promise futures do not join a worker during destruction. Each worker owns its
+// captured backends and one shared slot, never a pointer to the harness. At most
+// one local and one cloud call can remain outstanding per harness, even when an
+// adapter ignores its timeout. Late results are discarded, not re-arbitrated.
+template<class T, class F>
+std::future<T> launchBounded(const std::shared_ptr<std::atomic<bool>>& busy, F work) {
+    if (busy->exchange(true)) return {};
+    auto promise = std::make_shared<std::promise<T>>();
+    auto future = promise->get_future();
+    try {
+        std::thread([busy, promise, work = std::move(work)]() mutable {
+            try { promise->set_value(work()); }
+            catch (...) { promise->set_exception(std::current_exception()); }
+            busy->store(false);
+        }).detach();
+    } catch (...) { busy->store(false); throw; }
+    return future;
+}
+template<class T>
+std::optional<T> completed(std::future<T>& future, std::chrono::steady_clock::time_point deadline) {
+    if (!future.valid() || future.wait_until(deadline) != std::future_status::ready) return {};
+    try { return future.get(); } catch (...) { return {}; }
+}
 }
 
 PipelineResponse PipelineHarness::execute(const PipelineRequest& request) {
+    const auto start = std::chrono::steady_clock::now();
     PipelineResponse response;
-    auto pipeline_start = std::chrono::steady_clock::now();
-
-    if (!isReady()) {
+    std::shared_ptr<IPromptEngine> prompt;
+    std::shared_ptr<ICloudBackend> cloud;
+    std::shared_ptr<IArbiter> arbiter;
+    std::shared_ptr<IConfidenceScorer> scorer;
+    std::shared_ptr<ILocalInference> local;
+    HarnessConfig config;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        prompt = active_prompt_engine_; cloud = active_cloud_backend_;
+        arbiter = active_arbiter_; scorer = active_scorer_; local = active_local_;
+        config = config_;
+    }
+    if (!prompt || !arbiter || !scorer || !local) {
         response.result.content = "Pipeline not initialized";
         response.result.source = ArbiterOutput::Source::Fallback;
         response.result.reason = "harness not ready";
         return response;
     }
-
-    // ── Step 1: Pre-score confidence ──
-    auto pre_signals = buildPreScoreSignals(request);
-    auto pre_score = active_scorer_->preScore(pre_signals);
-    response.confidence = pre_score;
-
-    // ── Step 2: Decide whether to fire cloud ──
-    bool fire_cloud = shouldFireCloud(pre_score);
-    response.cloud_fired = fire_cloud;
-    response.prompt_engine_used = active_prompt_engine_->name();
-
-    // ── Step 3: If firing cloud, compress prompt and launch async ──
+    const auto deadline = start + std::chrono::milliseconds(std::max(0, arbiter->getDeadline(request.intent_type)));
+    const auto signals = buildPreScoreSignals(request);
+    const auto pre = scorer->preScore(signals);
+    response.confidence = pre;
+    response.prompt_engine_used = prompt->name();
     std::future<CloudResult> cloud_future;
-    if (fire_cloud) {
-        auto compressed = active_prompt_engine_->compress(
-            request.user_input, request.history, request.context_vars);
-        response.cloud_input_tokens = compressed.estimated_tokens;
-
-        cloud_future = active_cloud_backend_->inferAsync(
-            compressed.user_prompt, compressed.system_prompt);
+    if (config.cloud_enabled && config.arbiter_config.strategy != ArbiterStrategy::LocalOnly &&
+        cloud && cloud->isReady() && pre.overall < config.confidence_thresholds.high) {
+        const auto compressed = prompt->compress(request.user_input, request.history, request.context_vars);
+        cloud_future = launchBounded<CloudResult>(cloud_busy_, [cloud, compressed] {
+            return cloud->infer(compressed.user_prompt, compressed.system_prompt);
+        });
+        response.cloud_fired = cloud_future.valid();
+        if (response.cloud_fired) response.cloud_input_tokens = compressed.estimated_tokens;
     }
-
-    // ── Step 4: Run local inference (blocking) ──
-    std::string local_prompt = active_prompt_engine_->renderLocal(
-        request.user_input, request.history, request.context_vars);
-
-    auto local_start = std::chrono::steady_clock::now();
-    auto local_result = active_local_->infer(local_prompt);
-    auto local_elapsed = std::chrono::steady_clock::now() - local_start;
-    local_result.latency_ms = static_cast<int>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(local_elapsed).count());
-    response.local_latency_ms = local_result.latency_ms;
-
-    // ── Step 5: Post-score local result ──
-    if (local_result.success && active_scorer_) {
-        auto post_signals = active_local_->getLastPostSignals();
-        auto post_score = active_scorer_->postScore(pre_signals, post_signals);
-        local_result.confidence = post_score;
-        response.confidence = post_score;
+    const auto local_prompt = prompt->renderLocal(request.user_input, request.history, request.context_vars);
+    auto local_future = launchBounded<LocalResult>(local_busy_, [local, scorer, signals, local_prompt] {
+        const auto begin = std::chrono::steady_clock::now();
+        auto result = local->infer(local_prompt);
+        result.latency_ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count());
+        if (result.success) result.confidence = scorer->postScore(signals, local->getLastPostSignals());
+        return result;
+    });
+    const auto local_result = completed(local_future, deadline);
+    const auto cloud_result = completed(cloud_future, deadline);
+    if (local_result) {
+        response.local_latency_ms = local_result->latency_ms;
+        response.confidence = local_result->confidence;
     }
-
-    // ── Step 6: Wait for cloud result (bounded by deadline) ──
-    std::optional<CloudResult> cloud_result;
-    if (fire_cloud && cloud_future.valid()) {
-        int deadline = active_arbiter_->getDeadline(request.intent_type);
-
-        // Subtract time already spent on local inference
-        int remaining_ms = deadline - local_result.latency_ms;
-        remaining_ms = std::max(remaining_ms, 0);
-
-        auto status = cloud_future.wait_for(std::chrono::milliseconds(remaining_ms));
-        if (status == std::future_status::ready) {
-            cloud_result = cloud_future.get();
-            response.cloud_latency_ms = cloud_result->latency_ms;
-            response.cloud_output_tokens = cloud_result->output_tokens;
-        }
-        // If timeout: cloud_result stays nullopt → arbiter uses local only
+    if (cloud_result) {
+        response.cloud_latency_ms = cloud_result->latency_ms;
+        response.cloud_output_tokens = cloud_result->output_tokens;
     }
-
-    // ── Step 7: Arbiter picks final output ──
-    std::optional<LocalResult> local_opt;
-    if (local_result.success || !local_result.content.empty()) {
-        local_opt = local_result;
-    }
-
-    response.result = active_arbiter_->arbitrate(local_opt, cloud_result, request.intent_type);
-
-    auto pipeline_elapsed = std::chrono::steady_clock::now() - pipeline_start;
-    response.total_latency_ms = static_cast<int>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(pipeline_elapsed).count());
+    response.result = arbiter->arbitrate(local_result, cloud_result, request.intent_type);
+    response.total_latency_ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
     response.result.total_latency_ms = response.total_latency_ms;
-
     return response;
 }
 
 PipelineResponse PipelineHarness::executeCloudOnly(const PipelineRequest& request) {
+    std::shared_ptr<IPromptEngine> prompt;
+    std::shared_ptr<ICloudBackend> cloud;
+    { std::lock_guard<std::mutex> lock(mutex_); prompt = active_prompt_engine_; cloud = active_cloud_backend_; }
     PipelineResponse response;
     auto start = std::chrono::steady_clock::now();
 
-    if (!active_prompt_engine_ || !active_cloud_backend_) {
+    if (!prompt || !cloud) {
         response.result.content = "Cloud path not configured";
         response.result.source = ArbiterOutput::Source::Fallback;
         return response;
     }
 
-    auto compressed = active_prompt_engine_->compress(
+    auto compressed = prompt->compress(
         request.user_input, request.history, request.context_vars);
     response.cloud_input_tokens = compressed.estimated_tokens;
-    response.prompt_engine_used = active_prompt_engine_->name();
+    response.prompt_engine_used = prompt->name();
 
-    auto cloud_result = active_cloud_backend_->infer(
+    auto cloud_result = cloud->infer(
         compressed.user_prompt, compressed.system_prompt);
 
     response.cloud_latency_ms = cloud_result.latency_ms;
@@ -303,20 +305,23 @@ PipelineResponse PipelineHarness::executeCloudOnly(const PipelineRequest& reques
 }
 
 PipelineResponse PipelineHarness::executeLocalOnly(const PipelineRequest& request) {
+    std::shared_ptr<IPromptEngine> prompt;
+    std::shared_ptr<ILocalInference> local;
+    { std::lock_guard<std::mutex> lock(mutex_); prompt = active_prompt_engine_; local = active_local_; }
     PipelineResponse response;
     auto start = std::chrono::steady_clock::now();
 
-    if (!active_prompt_engine_ || !active_local_) {
+    if (!prompt || !local) {
         response.result.content = "Local path not configured";
         response.result.source = ArbiterOutput::Source::Fallback;
         return response;
     }
 
-    std::string prompt = active_prompt_engine_->renderLocal(
+    std::string local_prompt = prompt->renderLocal(
         request.user_input, request.history, request.context_vars);
-    response.prompt_engine_used = active_prompt_engine_->name();
+    response.prompt_engine_used = prompt->name();
 
-    auto local_result = active_local_->infer(prompt);
+    auto local_result = local->infer(local_prompt);
     response.local_latency_ms = local_result.latency_ms;
     response.cloud_fired = false;
 

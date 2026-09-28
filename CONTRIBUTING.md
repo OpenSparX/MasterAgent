@@ -1,3 +1,9 @@
+> Public 0.4.0-alpha.3: use the open reference runtime in `core/`,
+> `include/master_agent/runtime/`, `backends/`, and `cli/src/reference_main.cpp`.
+> The current runnable contract and commands are in README.md and
+> docs/reference_runtime.md. Legacy kernel descriptions below require private
+> source; experimental modules are not automatically integrated into this CLI.
+
 # Contributing to OAK (Open Agent Kernel)
 
 Thank you for your interest in contributing! OAK is an open-source project

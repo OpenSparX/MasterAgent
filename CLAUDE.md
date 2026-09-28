@@ -1,3 +1,9 @@
+> Public 0.4.0-alpha.3: use the open reference runtime in `core/`,
+> `include/master_agent/runtime/`, `backends/`, and `cli/src/reference_main.cpp`.
+> The current runnable contract and commands are in README.md and
+> docs/reference_runtime.md. Legacy kernel descriptions below require private
+> source; experimental modules are not automatically integrated into this CLI.
+
 # OAK (Open Agent Kernel) — CLAUDE.md
 
 ## Project Overview
@@ -13,8 +19,8 @@ cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ```
 
-OSS build produces: test binaries + eval harnesses + bench_strategic.
-Full CLI (`sparx`) requires proprietary kernel source in `src/`.
+OSS build produces the reference sparx CLI, installable Core/Http SDK, tests and optional eval binaries.
+The legacy full CLI still requires private kernel source. See docs/reference_runtime.md.
 
 ## Code Conventions
 
@@ -54,4 +60,4 @@ Full CLI (`sparx`) requires proprietary kernel source in `src/`.
 
 ## Version
 
-0.3.0-alpha. Versions follow semver. Don't inflate beyond actual stability.
+0.4.0-alpha.3. Versions follow semver. Don't inflate beyond actual stability.

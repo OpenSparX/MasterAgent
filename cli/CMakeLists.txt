@@ -43,9 +43,8 @@ set(SPARX_SOURCES
 # "NPU unavailable" at runtime on a host without the Qualcomm stack. That is
 # what lets one binary serve both a dev laptop and a device.
 #
-# In OSS builds (core source not present), the runtime adapters and sparx
-# executable are skipped — only the strategic feature sources compile (used by
-# eval/ and tests/).
+# The legacy CLI/adapters require the private kernel. The OSS branch below
+# builds a separate thin CLI against the public reference runtime.
 if(_core_source_present)
 
 add_library(sparx_runtimes STATIC
@@ -127,4 +126,16 @@ endif()
 
 install(TARGETS sparx RUNTIME DESTINATION bin)
 
+else()
+    add_executable(sparx src/reference_main.cpp)
+    target_link_libraries(sparx PRIVATE MasterAgent::Core)
+    if(MASTER_AGENT_ENABLE_HTTP)
+        target_link_libraries(sparx PRIVATE MasterAgent::Http)
+        target_compile_definitions(sparx PRIVATE MASTER_AGENT_HAS_HTTP=1)
+    endif()
+    if(NOT DEFINED SPARX_VERSION)
+        set(SPARX_VERSION "${PROJECT_VERSION}-alpha.3")
+    endif()
+    target_compile_definitions(sparx PRIVATE SPARX_VERSION="${SPARX_VERSION}")
+    install(TARGETS sparx RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()  # _core_source_present

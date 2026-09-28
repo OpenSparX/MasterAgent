@@ -1,5 +1,5 @@
 #include "../cli/include/sparx_mesh.h"
-#include <cassert>
+#include "check.h"
 #include <iostream>
 
 using namespace sparx::mesh;
@@ -17,9 +17,9 @@ int main() {
     nodeB.merge(opA);
 
     auto stateA = nodeA.get("fruits");
-    assert(stateA.has_value());
+    CHECK(stateA.has_value());
     // Both tags present — apple appears in the alive section
-    assert(stateA->value.find("apple") != std::string::npos);
+    CHECK(stateA->value.find("apple") != std::string::npos);
     std::cout << "PASS: concurrent add - element survives\n";
 
     // Test 2: Multiple elements across nodes
@@ -30,9 +30,9 @@ int main() {
     nodeB.merge(opCherry);
 
     stateA = nodeA.get("fruits");
-    assert(stateA->value.find("apple") != std::string::npos);
-    assert(stateA->value.find("banana") != std::string::npos);
-    assert(stateA->value.find("cherry") != std::string::npos);
+    CHECK(stateA->value.find("apple") != std::string::npos);
+    CHECK(stateA->value.find("banana") != std::string::npos);
+    CHECK(stateA->value.find("cherry") != std::string::npos);
     std::cout << "PASS: multi-element ORSet\n";
 
     // Test 3: Tag uniqueness — same element added twice gets different tags
@@ -41,8 +41,8 @@ int main() {
     node.mutate("items", CrdtType::ORSet, "x");
     auto state = node.get("items");
     // Should have two tags for "x" (solo#1 and solo#2)
-    assert(state->value.find("solo#1") != std::string::npos);
-    assert(state->value.find("solo#2") != std::string::npos);
+    CHECK(state->value.find("solo#1") != std::string::npos);
+    CHECK(state->value.find("solo#2") != std::string::npos);
     std::cout << "PASS: multiple adds generate unique tags\n";
 
     // Test 4: single-element propagation
@@ -51,8 +51,8 @@ int main() {
     auto op1 = empty1.mutate("k", CrdtType::ORSet, "v");
     empty2.merge(op1);
     auto s = empty2.get("k");
-    assert(s.has_value());
-    assert(s->value.find("v") != std::string::npos);
+    CHECK(s.has_value());
+    CHECK(s->value.find("v") != std::string::npos);
     std::cout << "PASS: single-element propagation\n";
 
     // Test 5: Remove element — observed-remove semantics
@@ -71,8 +71,8 @@ int main() {
         auto s1 = n1.get("set");
         auto s2 = n2.get("set");
         // The element's tag is tombstoned — "item" shouldn't appear in alive section
-        assert(s1->value.find("item\x1f") == std::string::npos);
-        assert(s2->value.find("item\x1f") == std::string::npos);
+        CHECK(s1->value.find("item\x1f") == std::string::npos);
+        CHECK(s2->value.find("item\x1f") == std::string::npos);
         std::cout << "PASS: remove propagates and element disappears\n";
     }
 
@@ -95,8 +95,8 @@ int main() {
         // The re-add's tag is NOT tombstoned → item survives (add-wins)
         auto s1 = n1.get("set");
         auto s2 = n2.get("set");
-        assert(s1->value.find("item") != std::string::npos);
-        assert(s2->value.find("item") != std::string::npos);
+        CHECK(s1->value.find("item") != std::string::npos);
+        CHECK(s2->value.find("item") != std::string::npos);
         std::cout << "PASS: add-wins — concurrent re-add survives remove\n";
     }
 
