@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libcurl4-openssl-dev
+          sudo apt-get install -y cmake ninja-build libcurl4-openssl-dev libsqlite3-dev
 
       - name: Configure CMake
         run: |
@@ -55,11 +55,12 @@ jobs:
         run: bash scripts/package.sh build dist/sparx-sdk.tar.gz
 
       - name: Upload build artifacts
-        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: sparx-linux-x64
-          path: build/cli/sparx
+          name: sparx-sdk-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
           retention-days: 7
           if-no-files-found: error
 

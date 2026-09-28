@@ -43,15 +43,16 @@ model history, 64 KiB input/model text, and 256-byte IDs. A full session returns
 
 Request IDs are scoped to the session. Reusing an ID with different input
 returns `REQUEST_CONFLICT`. Both success and failure are cached. For a deliberate
-retry, the caller must inspect the outcome and provide a new ID. All state is
-memory-only: deduplication is not guaranteed across process restarts or separate
-runtime instances. Do not use it as a durable exactly-once execution guarantee.
-
+retry, the caller must inspect the outcome and provide a new ID. With no store, state is memory-only and deduplication does not survive restart.
+Call `openStore(path)` before creating sessions to persist receipts and history in
+SQLite. Recovery is conservative: interrupted requests become UNKNOWN and cannot
+be automatically retried. See [durable recovery](durable_recovery.md).
 A handler exception returns `UNKNOWN`, because its side effect may already have
 occurred. Repeating that ID returns the same error without invoking the handler
 again. Tool handlers should return explicit `Result` failures when the outcome
-is known. Durable recovery, reconciliation storage, and journal encryption are
-future work, not hidden behavior of this release.
+is known. Use `unresolved()` to inspect ambiguous operations and `reconcile()` to record an
+operator-verified outcome and evidence note. `clearSession()` refuses unknown
+outcomes. The store does not encrypt data and does not implement a multi-step DAG.
 
 ## Concurrency and timeouts
 
@@ -62,8 +63,8 @@ callbacks cannot be safely preempted by this library.
 
 The optional libcurl model callback has a finite HTTP timeout (30 seconds by
 default), disables redirects, verifies TLS using libcurl defaults, and limits
-responses to 1 MiB. Credentials are supplied through the SDK config, not a CLI
-argument. Endpoints are explicit; the reference CLI defaults to no model.
+responses to 1 MiB. Credentials are supplied through the SDK config or a CLI-named environment
+variable, never a CLI credential argument. Endpoints are explicit; the reference CLI defaults to no model.
 
 The separate experimental edge/cloud harness uses a common inference deadline
 and retains shared backend ownership for late workers. It permits at most one

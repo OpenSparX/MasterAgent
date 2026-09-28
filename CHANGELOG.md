@@ -1,3 +1,13 @@
+# 0.4.0-alpha.2 — durable receipts and recovery
+
+- Add an opt-in SQLite store with WAL/FULL synchronization, exclusive ownership,
+  persistent request outcomes/history, conservative UNKNOWN recovery and audited reconciliation.
+- Fail closed on storage errors; write validated dispatch information before tool callbacks.
+- Add CLI state, JSONL, recovery, reconciliation, HTTP timeout and credential-env options.
+- Test real process termination after an external fsync, storage failure injection,
+  restart replay/history, locking, corrupted stores and schema versions.
+- Package provenance metadata/checksums and validate persistent installed consumers.
+
 # 0.4.0-alpha — open reference runtime
 
 - Add an independently runnable reference CLI and installable C++ Core/Http SDK.

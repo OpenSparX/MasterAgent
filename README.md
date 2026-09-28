@@ -3,22 +3,22 @@
 An embeddable, local-first C++17 agent runtime: turn input into validated tool
 execution, with deterministic skills before model inference.
 
-**0.4.0-alpha — open reference runtime.** Public source now builds a working
+**0.4.0-alpha.2 — open reference runtime with durable receipts.** Public source now builds a working
 `sparx` CLI and an installable C++ SDK. This is a small synchronous runtime, not
 the proprietary durable kernel described by the legacy interfaces.
 
 中文：开源版现可独立构建、运行，并作为 C++ SDK 集成。先匹配确定性技能，再按需调用模型；
-工具名称和参数必须通过校验。当前会话、历史和请求去重仅保存在内存中，不承诺崩溃恢复。
+工具名称和参数必须通过校验。默认使用内存；显式启用 SQLite 后，支持跨重启请求去重、历史恢复、UNKNOWN 故障恢复和人工对账。
 
 ## Quick start
 
 Requires CMake 3.18+, C++17, and libcurl development files for the optional HTTP
-adapter. Tests require Python 3. The release CI targets Linux and macOS.
+adapter, plus SQLite development files for durable storage. Tests/packaging require Python 3. The release CI targets Linux and macOS.
 
 ```bash
 git clone https://github.com/OpenSparX/MasterAgent.git
 cd MasterAgent
-# Ubuntu HTTP dependency: sudo apt-get install libcurl4-openssl-dev
+# Ubuntu HTTP dependency: sudo apt-get install libcurl4-openssl-dev libsqlite3-dev
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
@@ -53,12 +53,37 @@ model; malformed output produces an error, never a guessed tool call. No model
 is downloaded or started by this CLI. A full HTTP(S) endpoint URL may also be
 provided explicitly; no cloud fallback happens automatically.
 
+A request timeout can be set with `--timeout-ms 3000`. To use an authenticated
+endpoint, pass the environment-variable **name** via `--api-key-env MODEL_API_KEY`;
+credentials are not supplied as CLI arguments.
+
 For an SDK and deterministic CLI without libcurl:
 
 ```bash
 cmake -S . -B build-offline -DMASTER_AGENT_ENABLE_HTTP=OFF -DBUILD_EVAL=OFF
 cmake --build build-offline --parallel 4
 ```
+
+## Persist requests and recover interrupted tools
+
+```bash
+./build/cli/sparx run --state ./state/agent.db --session alice --request-id ac-001 \
+  --input 'set AC to 22 degrees'
+./build/cli/sparx recover --state ./state/agent.db
+```
+
+Repeating the same request after restarting returns the recorded outcome without
+calling the tool again. Unfinished requests become `UNKNOWN`, require external
+verification, and can be explicitly reconciled. A database failure blocks further
+execution instead of silently switching to memory. See the [recovery guide](docs/durable_recovery.md)
+for JSONL input, ownership locks, audit notes, backups and failure behavior.
+
+Only execution receipts/history are persisted; the AC simulator itself still resets
+on process restart. There is no transaction spanning a real device and SQLite, so this
+is not a distributed exactly-once guarantee. Storage is not encrypted.
+
+To omit both optional dependencies, build with `MASTER_AGENT_ENABLE_HTTP=OFF` and
+`MASTER_AGENT_ENABLE_STORAGE=OFF`.
 
 ## Embed the SDK
 
@@ -93,11 +118,12 @@ support, sessions, request replay, and concurrency limitations.
 | Deterministic exact-phrase skills | Available, no model required |
 | Host-defined tools and argument validation | Available; primitive object schema subset |
 | Local model HTTP adapter | Available when built with libcurl |
-| Sessions and request deduplication | Available in memory; bounded; no restart persistence |
+| Sessions and request deduplication | In memory, or persistent SQLite receipts/history with explicit opt-in |
+| Crash recovery and reconciliation | Interrupted single requests become UNKNOWN; explicit evidence-based reconciliation |
 | CLI and relocatable CMake SDK package | Built and exercised by CI |
 | Speculation, mesh, verification, learning, decoding | Experimental modules and synthetic evaluations; not wired into the reference CLI |
 | Edge/cloud harness | Experimental; explicit opt-in; bounded outstanding inference workers |
-| Durable DAG/WAL recovery and legacy kernel factories | Not supplied by this reference runtime |
+| Multi-step durable DAG and legacy kernel factories | Not supplied by this reference runtime |
 | Qualcomm QNN/Genie integration | Platform integration required; not verified by this release |
 | Production encryption / DP learning guarantees | Not claimed for this release |
 
@@ -120,8 +146,8 @@ return a nonzero status. `BUILD_EVAL=OFF` excludes them from an SDK-only build.
 
 The package script installs the SDK and CLI, unpacks the archive in a new
 location, runs the demo, and builds an external consumer before publishing the
-archive. The package uses platform system dependencies, including libcurl when
-enabled; it is not a universally static binary.
+archive. The archive includes `BUILD_INFO.json` and a SHA-256 sidecar. The package uses
+platform system dependencies, including libcurl and SQLite when enabled; it is not a universally static binary.
 
 ## Contributing
 

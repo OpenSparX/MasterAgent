@@ -25,3 +25,16 @@ add_test(NAME release_assertions_are_active COMMAND test_check_failure)
 set_tests_properties(release_assertions_are_active PROPERTIES WILL_FAIL TRUE)
 add_test(NAME evaluation_script_contract
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_eval_runner.py ${CMAKE_CURRENT_SOURCE_DIR}/eval/run_all.sh)
+if(MASTER_AGENT_ENABLE_STORAGE)
+    add_executable(test_durable_runtime tests/test_durable_runtime.cpp)
+    target_link_libraries(test_durable_runtime PRIVATE MasterAgent::Core)
+    add_test(NAME test_durable_runtime COMMAND test_durable_runtime)
+    if(MASTER_AGENT_BUILD_CLI)
+        add_executable(durable_probe tests/durable_probe.cpp)
+        target_link_libraries(durable_probe PRIVATE MasterAgent::Core)
+        add_test(NAME crash_recovery_contract
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_crash_recovery.py
+                $<TARGET_FILE:durable_probe> $<TARGET_FILE:sparx>)
+        set_tests_properties(crash_recovery_contract PROPERTIES TIMEOUT 60)
+    endif()
+endif()

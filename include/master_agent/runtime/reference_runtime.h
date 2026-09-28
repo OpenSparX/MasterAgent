@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -43,34 +44,62 @@ struct Limits {
     std::size_t sessions = 32;
     std::size_t requests_per_session = 256;
     std::size_t history_turns = 8;
+    std::size_t output_bytes = 65536;
 };
 
+struct RecoveryRecord {
+    Turn turn;
+    std::string tool;
+    Json arguments;
+};
+
+struct Resolution {
+    bool committed = false;
+    Json output;
+    std::string note;  // Required explanation/evidence supplied by the operator.
+};
+
+namespace detail { class DurableStore; }
+
 // A synchronous, in-process reference runtime. Concurrent/reentrant calls return
-// BUSY. Tool callbacks are trusted host code, not sandboxed. Session history and
-// request replay are memory-only; this is not the proprietary durable kernel.
+// BUSY. Tool callbacks are trusted host code, not sandboxed. Call openStore()
+// before run() for persistent receipts/history and conservative crash recovery.
 class Runtime {
 public:
     explicit Runtime(Limits limits = {});
+    ~Runtime();
+    Status openStore(const std::string& path);
+    Result<std::vector<RecoveryRecord>> unresolved();
+    Status reconcile(const std::string& session_id, const std::string& request_id,
+                     const Resolution& resolution);
     Status registerTool(Tool tool);
     Status registerSkill(std::string phrase, std::string tool, Json arguments);
     Status setModel(ModelHandler model);
     Result<Reply> run(const Turn& turn);
-    // Explicitly discards history AND request deduplication for this session.
+    // Discards history AND deduplication. Refuses sessions with UNKNOWN outcomes.
     Status clearSession(const std::string& session_id);
 
 private:
     struct Skill { std::string tool; Json arguments; };
-    struct Cached { std::string input; Result<Reply> result; };
+    struct Cached {
+        std::string input;
+        Result<Reply> result;
+        std::string tool;
+        Json arguments = Json::object();
+    };
     struct Session {
         std::map<std::string, Cached> requests;
         std::vector<Json> history;
     };
     Result<Reply> execute(const Turn& turn, Session& session);
+    void remember(Session& session, const Turn& turn, const Reply& reply);
     Limits limits_;
     std::mutex mutex_;
     std::map<std::string, Tool> tools_;
     std::map<std::string, Skill> skills_;
     std::map<std::string, Session> sessions_;
     ModelHandler model_;
+    std::unique_ptr<detail::DurableStore> store_;
+    Status storage_status_ = Status::Ok();
 };
 }  // namespace master_agent::reference

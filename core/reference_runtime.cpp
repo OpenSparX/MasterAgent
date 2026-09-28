@@ -1,4 +1,5 @@
 #include "master_agent/runtime/reference_runtime.h"
+#include "durable_store.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -74,6 +75,79 @@ Status validate(const Json& args, const Json& schema) {
 }  // namespace
 
 Runtime::Runtime(Limits limits) : limits_(limits) {}
+Runtime::~Runtime() = default;
+
+Status Runtime::openStore(const std::string& path) {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock) return Status::Error("BUSY");
+    if (store_ || !sessions_.empty()) return Status::Error("STORE_ALREADY_ACTIVE", "Open a store before creating sessions");
+    auto candidate = std::make_unique<detail::DurableStore>();
+    storage_status_ = candidate->open(path);
+    if (!storage_status_) return storage_status_;
+    auto snapshot = candidate->load(limits_);
+    if (!snapshot) {
+        storage_status_ = Status::Error("STORAGE_ERROR", snapshot.error->message);
+        return storage_status_;
+    }
+    std::map<std::string, Session> recovered;
+    for (auto& entry : snapshot.value->histories) recovered[entry.first].history = std::move(entry.second);
+    for (auto& entry : snapshot.value->requests) {
+        recovered[entry.turn.session_id].requests.emplace(entry.turn.request_id,
+            Cached{entry.turn.input, std::move(entry.result), entry.tool, std::move(entry.arguments)});
+    }
+    sessions_ = std::move(recovered);
+    store_ = std::move(candidate);
+    return Status::Ok();
+}
+
+Result<std::vector<RecoveryRecord>> Runtime::unresolved() {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock) return fail<std::vector<RecoveryRecord>>("BUSY", "Runtime is executing");
+    std::vector<RecoveryRecord> records;
+    for (const auto& session : sessions_) for (const auto& request : session.second.requests) {
+        const auto& cached = request.second;
+        if (cached.result.error && cached.result.error->code == "UNKNOWN")
+            records.push_back({{session.first, request.first, cached.input}, cached.tool, cached.arguments});
+    }
+    return Result<std::vector<RecoveryRecord>>::success(std::move(records));
+}
+
+void Runtime::remember(Session& session, const Turn& turn, const Reply& reply) {
+    Json user{{"role", "user"}, {"content", turn.input}};
+    Json assistant{{"role", "assistant"}, {"content", reply.output.dump()}};
+    session.history.reserve(session.history.size() + 2);
+    session.history.push_back(std::move(user));
+    session.history.push_back(std::move(assistant));
+    while (session.history.size() / 2 > limits_.history_turns)
+        session.history.erase(session.history.begin(), session.history.begin() + 2);
+}
+
+Status Runtime::reconcile(const std::string& session_id, const std::string& request_id, const Resolution& resolution) {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock) return Status::Error("BUSY");
+    if (!storage_status_) return storage_status_;
+    if (resolution.note.empty() || resolution.note.size() > 4096) return Status::Error("INVALID_RESOLUTION", "A bounded evidence note is required");
+    auto session = sessions_.find(session_id);
+    if (session == sessions_.end() || !session->second.requests.count(request_id)) return Status::Error("NOT_FOUND", "No such request");
+    auto& cached = session->second.requests.at(request_id);
+    if (!cached.result.error || cached.result.error->code != "UNKNOWN") return Status::Error("NOT_UNKNOWN", "Only UNKNOWN requests can be reconciled");
+    try {
+        if (resolution.output.dump().size() > limits_.output_bytes) return Status::Error("INVALID_RESOLUTION", "Output exceeds limit");
+        Json(resolution.note).dump(); // Validate UTF-8 before any store mutation.
+        auto result = resolution.committed
+            ? Result<Reply>::success({session_id, request_id, "reconciled", cached.tool, resolution.output, false})
+            : fail<Reply>("RECONCILED_FAILED", resolution.note);
+        auto previous_history = session->second.history;
+        if (result) remember(session->second, {session_id, request_id, cached.input}, *result);
+        if (store_) {
+            storage_status_ = store_->complete({session_id, request_id, cached.input}, result, session->second.history, resolution.note);
+            if (!storage_status_) { session->second.history = std::move(previous_history); return storage_status_; }
+        }
+        cached.result = std::move(result);
+        return Status::Ok();
+    } catch (const Json::exception& e) { return Status::Error("INVALID_RESOLUTION", e.what()); }
+}
+
 Status Runtime::registerTool(Tool tool) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock) return Status::Error("BUSY");
@@ -101,14 +175,23 @@ Status Runtime::setModel(ModelHandler model) {
 Status Runtime::clearSession(const std::string& id) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock) return Status::Error("BUSY");
+    if (!storage_status_) return storage_status_;
+    if (auto it = sessions_.find(id); it != sessions_.end())
+        for (const auto& request : it->second.requests)
+            if (request.second.result.error && request.second.result.error->code == "UNKNOWN")
+                return Status::Error("UNRESOLVED_REQUESTS", "Reconcile unknown outcomes before clearing the session");
+    if (store_) { storage_status_ = store_->clear(id); if (!storage_status_) return storage_status_; }
     sessions_.erase(id);
     return Status::Ok();
 }
 Result<Reply> Runtime::run(const Turn& turn) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock) return fail<Reply>("BUSY", "Runtime is executing another operation");
+    if (!storage_status_) return fail<Reply>(storage_status_.error_code, storage_status_.error_message);
     if (turn.session_id.empty() || turn.request_id.empty() || turn.input.empty() || turn.input.size() > 65536 || turn.session_id.size() > 256 || turn.request_id.size() > 256)
         return fail<Reply>("INVALID_REQUEST", "Nonempty bounded session, request and input are required");
+    try { Json{{"session", turn.session_id}, {"request", turn.request_id}, {"input", turn.input}}.dump(); }
+    catch (const Json::exception&) { return fail<Reply>("INVALID_REQUEST", "Request text must be valid UTF-8"); }
     if (!sessions_.count(turn.session_id) && sessions_.size() >= limits_.sessions) return fail<Reply>("RESOURCE_LIMIT", "Session limit reached");
     auto& session = sessions_[turn.session_id];
     if (auto it = session.requests.find(turn.request_id); it != session.requests.end()) {
@@ -118,14 +201,30 @@ Result<Reply> Runtime::run(const Turn& turn) {
         return result;
     }
     if (session.requests.size() >= limits_.requests_per_session) return fail<Reply>("RESOURCE_LIMIT", "Request limit reached; start a new session");
-    auto result = execute(turn, session);
-    // Cache failures too: an UNKNOWN tool outcome must never trigger an automatic retry.
-    session.requests.emplace(turn.request_id, Cached{turn.input, result});
-    if (result) {
-        session.history.push_back({{"role", "user"}, {"content", turn.input}});
-        session.history.push_back({{"role", "assistant"}, {"content", result.value->output.dump()}});
-        while (session.history.size() / 2 > limits_.history_turns) session.history.erase(session.history.begin(), session.history.begin() + 2);
+    if (store_) {
+        storage_status_ = store_->begin(turn);
+        if (!storage_status_) return fail<Reply>(storage_status_.error_code, storage_status_.error_message);
     }
+    auto& cached = session.requests.emplace(turn.request_id, Cached{turn.input,
+        fail<Reply>("UNKNOWN", "Request started; outcome not recorded"), "", Json::object()}).first->second;
+    auto previous_history = session.history;
+    Result<Reply> result;
+    try {
+        result = execute(turn, session);
+        if (result) {
+            if (result.value->output.dump().size() > limits_.output_bytes)
+                result = fail<Reply>(cached.tool.empty() ? "OUTPUT_LIMIT" : "UNKNOWN", "Output exceeds limit; inspect any tool side effect");
+            else remember(session, turn, *result);
+        }
+    } catch (const std::exception&) {
+        result = fail<Reply>(cached.tool.empty() ? "INTERNAL" : "UNKNOWN", "Unable to encode the outcome; inspect any tool side effect");
+    }
+    if (store_ && storage_status_) storage_status_ = store_->complete(turn, result, session.history);
+    if (!storage_status_) {
+        session.history = std::move(previous_history);
+        result = fail<Reply>("UNKNOWN", "Could not durably record the outcome; reopen the store and reconcile before retrying");
+    }
+    cached.result = result;
     return result;
 }
 Result<Reply> Runtime::execute(const Turn& turn, Session& session) {
@@ -164,6 +263,13 @@ Result<Reply> Runtime::execute(const Turn& turn, Session& session) {
     if (tool == tools_.end()) return fail<Reply>("UNKNOWN_TOOL", "Model selected an unregistered tool");
     auto valid = validate(arguments, tool->second.parameters);
     if (!valid) return fail<Reply>(valid.error_code, valid.error_message);
+    auto& receipt = session.requests.at(turn.request_id);
+    receipt.tool = reply.tool;
+    receipt.arguments = arguments;
+    if (store_) {
+        storage_status_ = store_->dispatch(turn, reply.tool, arguments);
+        if (!storage_status_) return fail<Reply>("STORAGE_ERROR", "Dispatch was not persisted; tool was not called");
+    }
     try {
         auto result = tool->second.execute(arguments);
         if (!result) return Result<Reply>::failure(result.error.value_or(StructuredError{"TOOL_ERROR", "Tool returned no result", "", 500}));

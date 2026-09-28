@@ -12,6 +12,7 @@ cmake --install "${BUILD_DIR}" --prefix "${STAGING}/sdk" --config Release
 test -x "${STAGING}/sdk/bin/sparx"
 cp "${ROOT}/LICENSE" "${ROOT}/README.md" "${STAGING}/sdk/"
 cp -R "${ROOT}/examples/reference_agent" "${STAGING}/sdk/example"
+python3 "${ROOT}/scripts/build_manifest.py" "${ROOT}" "${BUILD_DIR}" "${STAGING}/sdk/BUILD_INFO.json"
 tar -czf "${STAGING}/candidate.tar.gz" -C "${STAGING}/sdk" .
 mkdir "${STAGING}/unpacked"
 tar -xzf "${STAGING}/candidate.tar.gz" -C "${STAGING}/unpacked"
@@ -23,4 +24,11 @@ cmake --build "${STAGING}/consumer" --config Release
 ctest --test-dir "${STAGING}/consumer" -C Release --output-on-failure
 # Publish the file only after all verification has succeeded.
 cp "${STAGING}/candidate.tar.gz" "${ARCHIVE}"
+python3 - "${ARCHIVE}" <<'PY_CHECKSUM'
+import hashlib
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+p.with_name(p.name + '.sha256').write_text(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n')
+PY_CHECKSUM
 printf 'Verified archive: %s\n' "${ARCHIVE}"

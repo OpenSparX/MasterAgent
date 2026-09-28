@@ -5,3 +5,13 @@ add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE MasterAgent::Core)
 enable_testing()
 add_test(NAME run_consumer COMMAND consumer)
+
+if(TARGET MasterAgent::Http)
+    target_link_libraries(consumer PRIVATE MasterAgent::Http)
+    target_compile_definitions(consumer PRIVATE TEST_HTTP=1)
+endif()
+
+if(MasterAgent_WITH_STORAGE)
+    target_compile_definitions(consumer PRIVATE TEST_STORAGE=1)
+    add_test(NAME installed_persistent_replay COMMAND consumer "${CMAKE_CURRENT_BINARY_DIR}/consumer.db")
+endif()

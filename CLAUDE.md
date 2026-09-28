@@ -1,4 +1,4 @@
-> Public 0.4.0-alpha: use the open reference runtime in `core/`,
+> Public 0.4.0-alpha.2: use the open reference runtime in `core/`,
 > `include/master_agent/runtime/`, `backends/`, and `cli/src/reference_main.cpp`.
 > The current runnable contract and commands are in README.md and
 > docs/reference_runtime.md. Legacy kernel descriptions below require private
@@ -60,4 +60,4 @@ The legacy full CLI still requires private kernel source. See docs/reference_run
 
 ## Version
 
-0.4.0-alpha. Versions follow semver. Don't inflate beyond actual stability.
+0.4.0-alpha.2. Versions follow semver. Don't inflate beyond actual stability.
