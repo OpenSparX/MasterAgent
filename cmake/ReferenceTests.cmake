@@ -38,3 +38,16 @@ if(MASTER_AGENT_ENABLE_STORAGE)
         set_tests_properties(crash_recovery_contract PROPERTIES TIMEOUT 60)
     endif()
 endif()
+
+add_executable(test_execution_context tests/test_execution_context.cpp)
+target_link_libraries(test_execution_context PRIVATE MasterAgent::Core)
+add_test(NAME test_execution_context COMMAND test_execution_context)
+set_tests_properties(test_execution_context PROPERTIES TIMEOUT 15)
+if(MASTER_AGENT_ENABLE_HTTP AND MASTER_AGENT_ENABLE_STORAGE AND MASTER_AGENT_BUILD_CLI)
+    add_subdirectory(examples/inventory_agent)
+    add_test(NAME inventory_service_contract
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_inventory_contract.py
+            $<TARGET_FILE:inventory_agent> $<TARGET_FILE:sparx>
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/inventory_agent/service.py)
+    set_tests_properties(inventory_service_contract PROPERTIES TIMEOUT 45)
+endif()

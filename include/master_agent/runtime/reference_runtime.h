@@ -3,6 +3,8 @@
 #include "master_agent/common/types.h"
 #include <nlohmann/json.hpp>
 #include <functional>
+#include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -23,6 +25,55 @@ struct Tool {
     // numeric minimum/maximum, additionalProperties:false. Others are rejected.
     Json parameters;
     ToolHandler execute;
+};
+
+// Copies share a thread-safe cancellation signal. Cancellation is cooperative.
+class CancellationToken {
+public:
+    void cancel() const { cancelled_->store(true); }
+    bool cancelled() const { return cancelled_->load(); }
+private:
+    std::shared_ptr<std::atomic<bool>> cancelled_ = std::make_shared<std::atomic<bool>>(false);
+};
+
+struct RunOptions {
+    std::optional<std::chrono::steady_clock::time_point> deadline;
+    CancellationToken cancellation;
+};
+
+struct ExecutionContext {
+    std::string session_id;
+    std::string request_id;
+    RunOptions options;
+    bool stopRequested() const;
+    // Collision-free encoding of session/request bytes; scope to one application/store.
+    std::string idempotencyKey() const;
+};
+
+enum class ToolState { Committed, Failed, Unknown };
+
+// Failed means the external outcome is definitely unsuccessful. A lost response
+// after sending a mutation is Unknown, even when the transport reports an error.
+class ToolOutcome {
+public:
+    static ToolOutcome committed(Json output);
+    static ToolOutcome failed(std::string message);
+    static ToolOutcome unknown(std::string message);
+    ToolState state() const { return state_; }
+private:
+    friend class Runtime;
+    ToolOutcome(ToolState state, Json output, StructuredError error)
+        : state_(state), output_(std::move(output)), error_(std::move(error)) {}
+    ToolState state_;
+    Json output_;
+    StructuredError error_;
+};
+
+struct ContextTool {
+    std::string name;
+    std::string description;
+    Json parameters;
+    std::function<ToolOutcome(const ExecutionContext&, const Json&)> execute;
 };
 
 struct Turn {
@@ -73,9 +124,10 @@ public:
     Status reconcile(const std::string& session_id, const std::string& request_id,
                      const Resolution& resolution);
     Status registerTool(Tool tool);
+    Status registerContextTool(ContextTool tool);
     Status registerSkill(std::string phrase, std::string tool, Json arguments);
     Status setModel(ModelHandler model);
-    Result<Reply> run(const Turn& turn);
+    Result<Reply> run(const Turn& turn, const RunOptions& options = {});
     // Discards history AND deduplication. Refuses sessions with UNKNOWN outcomes.
     Status clearSession(const std::string& session_id);
 
@@ -91,11 +143,11 @@ private:
         std::map<std::string, Cached> requests;
         std::vector<Json> history;
     };
-    Result<Reply> execute(const Turn& turn, Session& session);
+    Result<Reply> execute(const Turn& turn, Session& session, const ExecutionContext& context);
     void remember(Session& session, const Turn& turn, const Reply& reply);
     Limits limits_;
     std::mutex mutex_;
-    std::map<std::string, Tool> tools_;
+    std::map<std::string, ContextTool> tools_;
     std::map<std::string, Skill> skills_;
     std::map<std::string, Session> sessions_;
     ModelHandler model_;

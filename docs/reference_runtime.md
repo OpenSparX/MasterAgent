@@ -34,6 +34,60 @@ Schemas must use `type:object`, `properties`, and
 nested objects/arrays, malformed schemas, and unknown required fields are
 rejected at registration. Do not assume full JSON Schema conformance.
 
+## Context-aware tools and outcomes
+
+`registerContextTool(ContextTool)` is the preferred integration API. The handler
+receives `const ExecutionContext&` and validated arguments and returns a
+`ToolOutcome`:
+
+```cpp
+runtime.registerContextTool({"reserve", "Reserve stock", schema,
+    [](const ExecutionContext& context, const Json& arguments) {
+        // Pass context.idempotencyKey() to a service that supports atomic deduplication.
+        // Check context.stopRequested() before initiating an operation.
+        return ToolOutcome::committed(Json{{"reserved", true}});
+    }});
+```
+
+The snippet shows the API shape only; the [inventory example](../examples/inventory_agent/README.md)
+implements the external operation and lost-response handling.
+
+- `committed(output)`: the effect/result is confirmed. A cancellation or deadline
+  arriving during the callback does not erase that confirmation.
+- `failed(message)`: definitely unsuccessful; becomes `TOOL_FAILED`. Use only when
+  the service establishes failure or the tool knows it performed no effect.
+- `unknown(message)`: the external outcome cannot be established; becomes `UNKNOWN`
+  and requires reconciliation. A timeout after sending a mutation is not proof of failure.
+
+This alpha release preserves source compatibility for legacy callback registration;
+rebuild applications against the updated SDK. Binary ABI stability is not promised.
+
+Legacy `registerTool(Tool)` callbacks still receive arguments only. Their successful
+`Result` maps to committed; explicit errors map to failed, except `UNKNOWN`, which
+remains unknown. Exceptions from either handler become UNKNOWN. Prefer the typed API
+for new adapters so a generic transport failure is not mistaken for a definite failure.
+
+`run(turn, options)` accepts `RunOptions` with an optional `steady_clock` deadline
+and a copyable `CancellationToken`. Copies share an atomic flag; another thread may
+call `options.cancellation.cancel()` while the synchronous run is in progress.
+A tool should poll `context.stopRequested()` or integrate the signal with its I/O.
+Native code is not forcibly interrupted, and cancellation cannot undo a remote effect.
+Custom model handlers still own their I/O timeout; the runtime checks again before
+invoking any selected tool.
+
+For an unseen request, cancellation/deadline is checked before recording STARTED,
+then before dispatch and invocation. A pre-start rejection does not consume a session
+or request slot; a stop after STARTED is recorded as a terminal failure. Replaying an
+existing receipt returns that authoritative result even if the new options are expired
+or cancelled. Deliberately retrying a recorded failure needs a new request ID.
+
+`idempotencyKey()` encodes UTF-8 session/request bytes separately in hex with a dot
+separator. It is stable across restarts and collision-free for the bounded IDs accepted
+by `run()`. Its namespace is one host application/store; independent applications must
+provide distinct external scopes. Session/request IDs are not credentials. Authorization
+and tenant isolation remain the host's responsibility. Do not retain references to the
+context/arguments after the synchronous callback returns; copy needed values explicitly.
+
 ## Sessions, replay, and failure
 
 Defaults: 32 sessions, 256 recorded requests per session, 8 successful turns of

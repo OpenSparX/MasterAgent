@@ -1,3 +1,14 @@
+# 0.4.0-alpha.3 — execution contracts and HTTP business integration
+
+- Add contextual tools with session/request identity, stable scoped idempotency
+  keys, monotonic deadlines and shared cooperative cancellation signals.
+- Introduce typed committed/failed/unknown outcomes; preserve the legacy callback API.
+- Check cancellation before dispatch; preserve authoritative results returned after cancellation.
+- Add an independent HTTP inventory service with atomic stock/idempotency receipts,
+  lost-response injection, external reconciliation and service/runtime restart tests.
+- Make public-runtime static analysis blocking; run ASan/UBSan and dependency-free
+  builds in CI. Verify contextual consumers and the HTTP example from SDK archives.
+
 # 0.4.0-alpha.2 — durable receipts and recovery
 
 - Add an opt-in SQLite store with WAL/FULL synchronization, exclusive ownership,

@@ -72,7 +72,27 @@ Status validate(const Json& args, const Json& schema) {
     }
     return Status::Ok();
 }
+Status stopped(const ExecutionContext& context) {
+    if (context.options.cancellation.cancelled()) return Status::Error("CANCELLED", "Execution cancelled before tool invocation");
+    if (context.options.deadline && std::chrono::steady_clock::now() >= *context.options.deadline)
+        return Status::Error("DEADLINE_EXCEEDED", "Execution deadline elapsed before tool invocation");
+    return Status::Ok();
+}
 }  // namespace
+
+bool ExecutionContext::stopRequested() const { return !stopped(*this); }
+std::string ExecutionContext::idempotencyKey() const {
+    constexpr char hex[] = "0123456789abcdef";
+    std::string key;
+    for (const auto* part : {&session_id, &request_id}) {
+        if (!key.empty()) key += '.';
+        for (unsigned char byte : *part) { key += hex[byte >> 4]; key += hex[byte & 15]; }
+    }
+    return key;
+}
+ToolOutcome ToolOutcome::committed(Json output) { return {ToolState::Committed, std::move(output), {}}; }
+ToolOutcome ToolOutcome::failed(std::string message) { return {ToolState::Failed, {}, {"TOOL_FAILED", std::move(message), "", 422}}; }
+ToolOutcome ToolOutcome::unknown(std::string message) { return {ToolState::Unknown, {}, {"UNKNOWN", std::move(message), "", 409}}; }
 
 Runtime::Runtime(Limits limits) : limits_(limits) {}
 Runtime::~Runtime() = default;
@@ -149,6 +169,17 @@ Status Runtime::reconcile(const std::string& session_id, const std::string& requ
 }
 
 Status Runtime::registerTool(Tool tool) {
+    if (!tool.execute) return Status::Error("INVALID_TOOL", "Tool requires a handler");
+    return registerContextTool({std::move(tool.name), std::move(tool.description), std::move(tool.parameters),
+        [handler = std::move(tool.execute)](const ExecutionContext&, const Json& args) {
+            auto result = handler(args);
+            if (result) return ToolOutcome::committed(std::move(*result));
+            auto error = result.error.value_or(StructuredError{"TOOL_ERROR", "Tool returned no result", "", 500});
+            if (error.code == "UNKNOWN") return ToolOutcome::unknown(error.message);
+            return ToolOutcome(ToolState::Failed, {}, std::move(error));
+        }});
+}
+Status Runtime::registerContextTool(ContextTool tool) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock) return Status::Error("BUSY");
     if (tool.name.empty() || !tool.execute || tools_.count(tool.name)) return Status::Error("INVALID_TOOL", "Tool requires a unique name and handler");
@@ -184,7 +215,7 @@ Status Runtime::clearSession(const std::string& id) {
     sessions_.erase(id);
     return Status::Ok();
 }
-Result<Reply> Runtime::run(const Turn& turn) {
+Result<Reply> Runtime::run(const Turn& turn, const RunOptions& options) {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock) return fail<Reply>("BUSY", "Runtime is executing another operation");
     if (!storage_status_) return fail<Reply>(storage_status_.error_code, storage_status_.error_message);
@@ -192,14 +223,21 @@ Result<Reply> Runtime::run(const Turn& turn) {
         return fail<Reply>("INVALID_REQUEST", "Nonempty bounded session, request and input are required");
     try { Json{{"session", turn.session_id}, {"request", turn.request_id}, {"input", turn.input}}.dump(); }
     catch (const Json::exception&) { return fail<Reply>("INVALID_REQUEST", "Request text must be valid UTF-8"); }
-    if (!sessions_.count(turn.session_id) && sessions_.size() >= limits_.sessions) return fail<Reply>("RESOURCE_LIMIT", "Session limit reached");
-    auto& session = sessions_[turn.session_id];
-    if (auto it = session.requests.find(turn.request_id); it != session.requests.end()) {
-        if (it->second.input != turn.input) return fail<Reply>("REQUEST_CONFLICT", "Request ID was already used for different input");
-        auto result = it->second.result;
-        if (result) result.value->replayed = true;
-        return result;
+    auto existing = sessions_.find(turn.session_id);
+    if (existing != sessions_.end()) {
+        auto it = existing->second.requests.find(turn.request_id);
+        if (it != existing->second.requests.end()) {
+            if (it->second.input != turn.input) return fail<Reply>("REQUEST_CONFLICT", "Request ID was already used for different input");
+            auto result = it->second.result;
+            if (result) result.value->replayed = true;
+            return result;
+        }
     }
+    const ExecutionContext context{turn.session_id, turn.request_id, options};
+    auto ready = stopped(context);
+    if (!ready) return fail<Reply>(ready.error_code, ready.error_message);
+    if (existing == sessions_.end() && sessions_.size() >= limits_.sessions) return fail<Reply>("RESOURCE_LIMIT", "Session limit reached");
+    auto& session = sessions_[turn.session_id];
     if (session.requests.size() >= limits_.requests_per_session) return fail<Reply>("RESOURCE_LIMIT", "Request limit reached; start a new session");
     if (store_) {
         storage_status_ = store_->begin(turn);
@@ -210,7 +248,7 @@ Result<Reply> Runtime::run(const Turn& turn) {
     auto previous_history = session.history;
     Result<Reply> result;
     try {
-        result = execute(turn, session);
+        result = execute(turn, session, context);
         if (result) {
             if (result.value->output.dump().size() > limits_.output_bytes)
                 result = fail<Reply>(cached.tool.empty() ? "OUTPUT_LIMIT" : "UNKNOWN", "Output exceeds limit; inspect any tool side effect");
@@ -227,7 +265,7 @@ Result<Reply> Runtime::run(const Turn& turn) {
     cached.result = result;
     return result;
 }
-Result<Reply> Runtime::execute(const Turn& turn, Session& session) {
+Result<Reply> Runtime::execute(const Turn& turn, Session& session, const ExecutionContext& context) {
     Reply reply{turn.session_id, turn.request_id, "skill", "", Json{}, false};
     Json arguments;
     if (auto it = skills_.find(turn.input); it != skills_.end()) {
@@ -263,6 +301,8 @@ Result<Reply> Runtime::execute(const Turn& turn, Session& session) {
     if (tool == tools_.end()) return fail<Reply>("UNKNOWN_TOOL", "Model selected an unregistered tool");
     auto valid = validate(arguments, tool->second.parameters);
     if (!valid) return fail<Reply>(valid.error_code, valid.error_message);
+    auto ready = stopped(context);
+    if (!ready) return fail<Reply>(ready.error_code, ready.error_message);
     auto& receipt = session.requests.at(turn.request_id);
     receipt.tool = reply.tool;
     receipt.arguments = arguments;
@@ -270,10 +310,13 @@ Result<Reply> Runtime::execute(const Turn& turn, Session& session) {
         storage_status_ = store_->dispatch(turn, reply.tool, arguments);
         if (!storage_status_) return fail<Reply>("STORAGE_ERROR", "Dispatch was not persisted; tool was not called");
     }
+    ready = stopped(context);
+    if (!ready) return fail<Reply>(ready.error_code, ready.error_message);
     try {
-        auto result = tool->second.execute(arguments);
-        if (!result) return Result<Reply>::failure(result.error.value_or(StructuredError{"TOOL_ERROR", "Tool returned no result", "", 500}));
-        reply.output = *result;
+        auto result = tool->second.execute(context, arguments);
+        if (result.state_ != ToolState::Committed) return Result<Reply>::failure(std::move(result.error_));
+        // A confirmed effect remains committed even if cancellation arrived during it.
+        reply.output = std::move(result.output_);
     } catch (...) {
         // The handler may have performed its side effect before throwing.
         return fail<Reply>("UNKNOWN", "Tool threw; reconcile its outcome before issuing a new request");

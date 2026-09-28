@@ -3,7 +3,7 @@
 An embeddable, local-first C++17 agent runtime: turn input into validated tool
 execution, with deterministic skills before model inference.
 
-**0.4.0-alpha.2 — open reference runtime with durable receipts.** Public source now builds a working
+**0.4.0-alpha.3 — open reference runtime with contextual tools and durable receipts.** Public source now builds a working
 `sparx` CLI and an installable C++ SDK. This is a small synchronous runtime, not
 the proprietary durable kernel described by the legacy interfaces.
 
@@ -111,12 +111,28 @@ phrase skills, optionally set a model callback, then call `Runtime::run()`.
 See the [integration contract](docs/reference_runtime.md) for errors, schema
 support, sessions, request replay, and concurrency limitations.
 
+## Connect a business tool
+
+Context-aware tools receive the session/request identity, a stable scoped
+idempotency key, deadline and cooperative cancellation signal. They return an
+explicit committed, failed or unknown outcome. The existing `registerTool()` API
+remains available. See the [execution contract](docs/reference_runtime.md).
+
+The [inventory example](examples/inventory_agent/README.md) talks to a separate
+HTTP service that commits inventory and an idempotency receipt in its own SQLite
+database. Its integration test deliberately drops a response after commit, checks
+UNKNOWN recovery, reconciles against the service receipt and proves no second
+stock decrement after either process restarts. This is a local business-service
+integration example, not a real-model or third-party production validation.
+
 ## Capability status
 
 | Capability | Public reference release |
 |---|---|
 | Deterministic exact-phrase skills | Available, no model required |
 | Host-defined tools and argument validation | Available; primitive object schema subset |
+| Execution context and typed tool outcomes | Available; identity, deadline, cooperative cancellation, committed/failed/unknown |
+| Independent HTTP business example | Inventory service with atomic idempotency and lost-response recovery |
 | Local model HTTP adapter | Available when built with libcurl |
 | Sessions and request deduplication | In memory, or persistent SQLite receipts/history with explicit opt-in |
 | Crash recovery and reconciliation | Interrupted single requests become UNKNOWN; explicit evidence-based reconciliation |
@@ -146,7 +162,7 @@ return a nonzero status. `BUILD_EVAL=OFF` excludes them from an SDK-only build.
 
 The package script installs the SDK and CLI, unpacks the archive in a new
 location, runs the demo, and builds an external consumer before publishing the
-archive. The archive includes `BUILD_INFO.json` and a SHA-256 sidecar. The package uses
+archive. The archive also includes the inventory example; HTTP/storage-enabled packages build and exercise it after unpacking. The archive includes `BUILD_INFO.json` and a SHA-256 sidecar. The package uses
 platform system dependencies, including libcurl and SQLite when enabled; it is not a universally static binary.
 
 ## Contributing

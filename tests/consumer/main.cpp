@@ -26,8 +26,10 @@ int main(int argc, char** argv) {
 #endif
     int calls = 0;
     Json schema{{"type", "object"}, {"properties", Json::object()}, {"additionalProperties", false}};
-    if (!runtime.registerTool({"ping", "Consumer integration", schema,
-        [&](const Json&) { ++calls; return Result<Json>::success("pong"); }})) return 1;
+    if (!runtime.registerContextTool({"ping", "Consumer integration", schema,
+        [&](const ExecutionContext& context, const Json&) {
+            if (context.idempotencyKey() != "636f6e73756d6572.31") return ToolOutcome::failed("Wrong identity");
+            ++calls; return ToolOutcome::committed("pong"); }})) return 1;
     if (!runtime.registerSkill("ping", "ping", Json::object())) return 2;
     auto result = runtime.run({"consumer", "1", "ping"});
     return result && result.value->output == "pong" && calls == 1 ? 0 : 3;

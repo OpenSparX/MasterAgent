@@ -16,7 +16,12 @@ ModelHandler makeHttpModel(HttpModelConfig config) {
         std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl(curl_easy_init(), curl_easy_cleanup);
         if (!curl) return fail("HTTP_ERROR", "Cannot allocate HTTP client");
         curl_slist* raw_headers = curl_slist_append(nullptr, "Content-Type: application/json");
-        if (!config.api_key.empty()) raw_headers = curl_slist_append(raw_headers, ("Authorization: Bearer " + config.api_key).c_str());
+        if (!raw_headers) return fail("HTTP_ERROR", "Cannot allocate HTTP headers");
+        if (!config.api_key.empty()) {
+            auto* extended = curl_slist_append(raw_headers, ("Authorization: Bearer " + config.api_key).c_str());
+            if (!extended) { curl_slist_free_all(raw_headers); return fail("HTTP_ERROR", "Cannot allocate credential header"); }
+            raw_headers = extended;
+        }
         std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)> headers(raw_headers, curl_slist_free_all);
         const auto body = Json{{"model", config.model}, {"messages", messages}, {"stream", false}, {"temperature", 0}, {"max_tokens", 512}}.dump();
         std::string response;
