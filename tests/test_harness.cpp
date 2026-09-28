@@ -393,6 +393,60 @@ TEST(harness_local_only_mode) {
 // Main
 // ═══════════════════════════════════════════════════════════════════════════════
 
+
+static void configureSlowHarness(PipelineHarness& harness, int local_ms, int cloud_ms) {
+    harness.registerPromptEngine("compressed", std::make_shared<CompressedPromptEngine>(PromptEngineConfig{}));
+    harness.registerLocalInference("mock", std::make_shared<MockLocalInference>("local", local_ms));
+    harness.registerCloudBackend("mock", std::make_shared<MockCloudBackend>("cloud", cloud_ms));
+    harness.registerConfidenceScorer("heuristic", std::make_shared<HeuristicScorer>());
+    ArbiterConfig ac; ac.deadline_ms = 50;
+    harness.registerArbiter("cloud_prefer", std::make_shared<CloudPreferArbiter>(ac));
+    HarnessConfig config; config.cloud_enabled = true; config.cloud_backend = "mock";
+    config.confidence_thresholds.high = 2.0f;
+    harness.applyConfig(config);
+}
+
+TEST(harness_deadline_includes_return_and_owns_late_workers) {
+    for (bool slow_local : {false, true}) {
+        auto begin = std::chrono::steady_clock::now();
+        int reported = 0;
+        {
+            PipelineHarness harness;
+            configureSlowHarness(harness, slow_local ? 600 : 10, slow_local ? 10 : 600);
+            PipelineRequest request; request.user_input = "general question";
+            auto result = harness.execute(request);
+            reported = result.total_latency_ms;
+            ASSERT_EQ(result.result.source, slow_local ? ArbiterOutput::Source::Cloud : ArbiterOutput::Source::Local);
+            // Retry while the slow worker is outstanding: no second slow job.
+            auto next = harness.execute(request);
+            if (!slow_local) ASSERT_TRUE(!next.cloud_fired);
+        }
+        auto wall = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
+        ASSERT_LT(wall, 400); // Old implementation waited for the 600ms future.
+        ASSERT_LT(reported, 250);
+        // Exercise late completion after both the harness and registry die.
+        std::this_thread::sleep_for(std::chrono::milliseconds(650));
+    }
+}
+
+TEST(cloud_future_survives_backend_destruction) {
+    std::future<CloudResult> result;
+    {
+        MockCloudBackend backend("owned snapshot", 50);
+        result = backend.inferAsync("question");
+    }
+    ASSERT_EQ(result.get().content, std::string("owned snapshot"));
+}
+
+TEST(harness_bad_config_does_not_keep_previous_backend) {
+    PipelineHarness harness;
+    configureSlowHarness(harness, 1, 1);
+    ASSERT_TRUE(harness.isReady());
+    auto config = harness.config(); config.prompt_engine = "missing";
+    harness.applyConfig(config);
+    ASSERT_TRUE(!harness.isReady());
+}
+
 int main() {
     std::cout << "\n=== Edge-Cloud Harness Tests ===\n\n";
 

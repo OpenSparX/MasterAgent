@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(MasterAgent VERSION 0.3.0 LANGUAGES CXX)
+project(MasterAgent VERSION 0.4.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+find_package(Threads REQUIRED)
+option(MASTER_AGENT_ENABLE_HTTP "Build the HTTP model adapter (libcurl)" ON)
+option(BUILD_EVAL "Build synthetic evaluation programs" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,10 +48,17 @@ if(MINGW)
     endfunction()
 endif()
 
+# Legacy kernel files are optional; the public build uses core/reference_runtime.cpp.
+set(_core_source_present OFF)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/agent_dispatch/atomic_lineage.cpp")
+    set(_core_source_present ON)
+endif()
+
 set(MEMORY_SHORT_TERM_SOURCE_ROOT
     "${CMAKE_SOURCE_DIR}/third_party/memory_short_term"
     CACHE PATH "Short-term memory source root")
 
+if(_core_source_present)
 if(NOT EXISTS
    "${MEMORY_SHORT_TERM_SOURCE_ROOT}/include/vehicle_memory/conversation_journal.h")
     message(FATAL_ERROR
@@ -72,14 +82,7 @@ if(WIN32)
     target_link_libraries(memory_short_term_core PRIVATE bcrypt)
 endif()
 
-# Check if the core source tree is present.
-# The full kernel source (src/) is proprietary and not included in the OSS
-# distribution. When absent, we build a stub library so that downstream
-# targets (cli, tests, eval) can still link.
-set(_core_source_present OFF)
-if(EXISTS "${CMAKE_SOURCE_DIR}/src/agent_dispatch/atomic_lineage.cpp")
-    set(_core_source_present ON)
-endif()
+endif() # legacy short-term memory library
 
 if(_core_source_present)
 
@@ -214,19 +217,27 @@ set_target_properties(master_agent_core PROPERTIES EXPORT_NAME Core)
 add_library(MasterAgent::Core ALIAS master_agent_core)
 
 else()
-# ─── OSS stub: core source not present ───────────────────────────────────
-# Build an INTERFACE library so cli/ and tests/ can still compile and link.
-# The cli implements all Agent OS functionality directly; it only needs
-# headers from include/ for type definitions.
-message(STATUS "Core source not present (OSS build) — using stub library")
-add_library(master_agent_core INTERFACE)
-target_compile_features(master_agent_core INTERFACE cxx_std_17)
-target_include_directories(master_agent_core INTERFACE
-    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party>"
+# The public reference runtime is a real, independently usable library.
+message(STATUS "Building the open reference runtime")
+add_library(master_agent_core STATIC core/reference_runtime.cpp)
+target_compile_features(master_agent_core PUBLIC cxx_std_17)
+target_include_directories(master_agent_core PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>"
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-target_link_libraries(master_agent_core INTERFACE memory_short_term_core)
+target_link_libraries(master_agent_core PUBLIC Threads::Threads)
+set_target_properties(master_agent_core PROPERTIES EXPORT_NAME Core POSITION_INDEPENDENT_CODE ON)
 add_library(MasterAgent::Core ALIAS master_agent_core)
+endif()
+
+if(MASTER_AGENT_ENABLE_HTTP)
+    find_package(CURL REQUIRED)
+    add_library(master_agent_http STATIC backends/http_model.cpp)
+    target_link_libraries(master_agent_http PUBLIC MasterAgent::Core PRIVATE CURL::libcurl)
+    set_target_properties(master_agent_http PROPERTIES EXPORT_NAME Http)
+    add_library(MasterAgent::Http ALIAS master_agent_http)
+    install(TARGETS master_agent_http EXPORT MasterAgentTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
 # Prompt and Skill use runtime-managed JSON/text configuration. Mirror the
@@ -372,7 +383,13 @@ elseif(MASTER_AGENT_BUILD_TESTS)
     endif()
 endif()
 
-add_subdirectory(eval)
+if(BUILD_EVAL)
+    add_subdirectory(eval)
+endif()
+
+if(MASTER_AGENT_BUILD_TESTS AND NOT _core_source_present)
+    include(cmake/ReferenceTests.cmake)
+endif()
 
 if(_core_source_present)
 install(TARGETS master_agent_core memory_short_term_core
@@ -380,7 +397,7 @@ install(TARGETS master_agent_core memory_short_term_core
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 else()
-install(TARGETS memory_short_term_core
+install(TARGETS master_agent_core
     EXPORT MasterAgentTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})

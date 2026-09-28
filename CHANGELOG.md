@@ -1,3 +1,13 @@
+# 0.4.0-alpha — open reference runtime
+
+- Add an independently runnable reference CLI and installable C++ Core/Http SDK.
+- Validate tool arguments; scope in-memory request replay and history by session.
+- Keep test expectations active in Release and verify installed/relocated consumers.
+- Fix eval executable paths, failure exit status, and Bash counter portability.
+- Bound edge/cloud inference waits and preserve backend lifetime after timeouts.
+- Initialize intent metadata and isolate speculation test persistence.
+- Require verified CLI + SDK archives in CI/release; document experimental limits.
+
 # Changelog
 
 All notable changes to OAK (Open Agent Kernel) will be documented in this file.

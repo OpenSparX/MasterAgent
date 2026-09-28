@@ -56,3 +56,6 @@ dist/
 
 # Claude
 .claude/
+
+/build-*/
+/install-*/

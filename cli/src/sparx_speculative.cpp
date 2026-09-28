@@ -1355,8 +1355,10 @@ void IntentPredictor::observe(const IntentRecord& record) {
         const auto& prev = recent_history_.back().intent_name;
 
         // Compute age-weighted increment
-        int64_t age_seconds = now - recent_history_.back().timestamp_utc;
-        double age_days = static_cast<double>(age_seconds) / 86400.0;
+        // Missing or out-of-order timestamps must not amplify counts or overflow.
+        double age_seconds = (now > 0 && recent_history_.back().timestamp_utc > 0)
+            ? std::max(0.0, static_cast<double>(now) - static_cast<double>(recent_history_.back().timestamp_utc)) : 0.0;
+        double age_days = age_seconds / 86400.0;
         float weight = static_cast<float>(std::exp(-decay_lambda * age_days));
 
         // Store as float counts (fractional weights)
@@ -1412,9 +1414,8 @@ std::vector<IntentPrediction> IntentPredictor::predict(
 
     const auto& current = recent_history_.back();
     const auto current_intent = current.intent_name;
-    auto now_hour = static_cast<uint8_t>(
-        std::chrono::duration_cast<std::chrono::hours>(
-            std::chrono::system_clock::now().time_since_epoch()).count() % 24);
+    // The observation carries local context; the host UTC clock may differ.
+    const auto now_hour = current.hour_of_day;
 
     // Collect candidates with scores from n-gram models (Level 1 & 2)
     std::map<std::string, float> ngram_scores;

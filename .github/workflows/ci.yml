@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, 'feat/**', 'fix/**']
+    branches: [main, develop, 'feat/**', 'fix/**', 'codex/**']
   pull_request:
     branches: [main, develop]
 
@@ -48,6 +48,12 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --timeout 120
 
+      - name: Run all synthetic evaluations
+        run: bash eval/run_all.sh
+
+      - name: Verify SDK and CLI archive
+        run: bash scripts/package.sh build dist/sparx-sdk.tar.gz
+
       - name: Upload build artifacts
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
@@ -55,7 +61,7 @@ jobs:
           name: sparx-linux-x64
           path: build/cli/sparx
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   lint:
     runs-on: ubuntu-latest

@@ -1,8 +1,9 @@
 #include "../cli/include/sparx_speculative.h"
-#include <cassert>
+#include "check.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <filesystem>
 
 using namespace sparx::speculation;
 
@@ -16,9 +17,19 @@ static std::optional<std::string> mockInference(
 int main() {
     std::cout << "=== Integration Test: Speculation → Cache → Hit ===\n\n";
 
+    // Isolate model persistence from the developer's real ~/.sparx data.
+    struct Scratch {
+        std::filesystem::path path = std::filesystem::temp_directory_path() /
+            ("sparx-speculation-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        Scratch() { CHECK(std::filesystem::create_directory(path)); }
+        ~Scratch() { std::error_code ec; std::filesystem::remove_all(path, ec); }
+    } scratch;
     // Setup
     PredictionConfig pred_config;
     pred_config.cold_start_threshold = 3;
+    pred_config.history_path = (scratch.path / "history.json").string();
+    pred_config.lstm_weights_path = (scratch.path / "lstm.bin").string();
+    pred_config.mamba_weights_path = (scratch.path / "mamba.bin").string();
     IntentPredictor predictor(pred_config);
 
     CacheConfig cache_config;
@@ -53,8 +64,8 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     std::cout << "  Predictor observations: " << predictor.observationCount() << "\n";
-    assert(predictor.observationCount() == 10);
-    assert(predictor.isWarmedUp());
+    CHECK(predictor.observationCount() == 10);
+    CHECK(predictor.isWarmedUp());
     std::cout << "  Predictor warmed up: yes\n";
 
     // Check predictions
@@ -64,9 +75,9 @@ int main() {
         std::cout << "    " << p.predicted_intent
                   << " (conf=" << p.confidence << ")\n";
     }
-    assert(!predictions.empty());
+    CHECK(!predictions.empty());
     // After repeated weather→forecast pattern, "weather" should be predicted
-    assert(predictions[0].predicted_intent == "weather");
+    CHECK(predictions[0].predicted_intent == "weather");
     std::cout << "  PASS: predictor learned weather→forecast→weather pattern\n\n";
 
     // Phase 2: Check cache for speculation results
